@@ -183,7 +183,7 @@ class SnapData():
         return True
 
 
-    def process_mesh_batch(self,context,object_name,is_selected,world_space_matrix,start_vertex_index,vertice_count,vertex_batch=1000):
+    def process_mesh_batch(self,context,object_name,is_selected,world_space_matrix,start_vertex_index,vertice_count,vertex_batch=500):
         object_index=self.scene_meshes.index(object_name)
         verts_data=self.verts_data[object_name]
         end_vertex_index=min(start_vertex_index+vertex_batch,vertice_count-1)
@@ -237,7 +237,7 @@ class SnapData():
 
 
 
-    def process_iteration(self,context,max_run_duration=0.005):
+    def process_iteration(self,context,max_run_duration=0.002):
         if not self: return
         start_time=datetime.now()
         elapsed_time=0

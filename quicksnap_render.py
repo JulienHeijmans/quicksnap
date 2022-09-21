@@ -80,7 +80,6 @@ def draw_line_3d(source,target,color=(1, 1, 0, 1),line_width=1,depth_test=False)
         bgl.glDisable(bgl.GL_DEPTH_TEST)
 
 def draw_points_3d(coords,color=(1, 1, 0, 1),point_width=3,depth_test=False):
-    print(f"draw_points_3d: {coords}")
     bgl.glEnable(bgl.GL_BLEND)
     if depth_test:
         bgl.glEnable(bgl.GL_DEPTH_TEST)
@@ -123,7 +122,8 @@ def draw_callback_2D(self, context):
                 color=(0, 1, 0, 1)
             else:
                 color=(1, 1, 0, 1)
-            draw_square_2d(source_x,source_y,7,color=color)
+            if self.settings.draw_rubberband:
+                draw_square_2d(source_x,source_y,7,color=color)
             if self.target2d:
                 if self.closest_target_id>=0:
                     if len(self.snapping)>0 :
@@ -134,8 +134,6 @@ def draw_callback_2D(self, context):
                         draw_square_2d(self.target2d[0],self.target2d[1],7,color=color)
                 else:
                     draw_square_2d(self.target2d[0],self.target2d[1],7,color=color,line_width=0)#dot to target
-
-
 
 
             if self.settings.draw_rubberband and self.target2d:
