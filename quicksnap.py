@@ -1,22 +1,16 @@
-﻿import bpy
+﻿import bpy,mathutils,bmesh,logging
 from . import quicksnap_utils
 from .quicksnap_utils import State
 from .quicksnap_snapdata import  SnapData
 from . import  quicksnap_render
-
 from bpy_extras import view3d_utils
-
 from mathutils import Vector
-import mathutils
-import bmesh
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
-
+logger = logging.getLogger(__name__)
 addon_keymaps = []
 
-
-
-mouse_pointer_offsets=[
+mouse_pointer_offsets = [
     Vector((-40,-40)),
     Vector((-40,0)),
     Vector((-40,40)),
@@ -32,14 +26,14 @@ def check_close_objects(context,region,depsgraph, mouse_position):
     points=[mouse_position]
     points.extend([mouse_position+point for point in mouse_pointer_offsets])
     hit_objects=[]
-    # print(f"check_close_objects: {points}")
+    # logger.info(f"check_close_objects: {points}")
     for point in points:
         view_position = view3d_utils.region_2d_to_origin_3d(region, context.space_data.region_3d, point)
         mouse_vector = view3d_utils.region_2d_to_vector_3d(region, context.space_data.region_3d, point)
         (hit,_,_,_,object,*_)=context.scene.ray_cast(depsgraph,origin=view_position,direction=mouse_vector)
         if hit:
             hit_objects.append(object)
-    # print(f"hit_objects: {hit_objects}")
+    # logger.info(f"hit_objects: {hit_objects}")
     return hit_objects
 
 
@@ -51,6 +45,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
     contraint_x : bpy.props.BoolProperty(default=False)
     
     def initialize(self,context):
+        
         context.area.header_text_set(f"QuickSnap: Pick a vertex/point from the selection to start move-snapping")
         self.snapping=""
         self.snapping_local=False
@@ -118,7 +113,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     for (index,co,spline_index,bezier) in self.vertex_source_data_v2.selected_ids[object_name]:
                         if bezier==1:
                             point=object.data.splines[spline_index].bezier_points[index]
-                            print(f"Backup point: {point.co} - handles: {point.handle_left} - {point.handle_right}")
+                            logger.info(f"Backup point: {point.co} - handles: {point.handle_left} - {point.handle_right}")
                             self.backup_vertice_positions[object_name].append((spline_index,index,co.copy(),bezier,point.handle_left.copy(),point.handle_right.copy()))
                         else:
                             point=object.data.splines[spline_index].points[index]
@@ -175,7 +170,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
     
     def update(self,context):
-        # print(f"==UPDATE==")        
+        # logger.info(f"==UPDATE==")        
         region=None
         for area_region in context.area.regions:
             if area_region.type=='WINDOW':
@@ -188,8 +183,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         mouse_coord_screen_flat=Vector((self.mouse_position[0],self.mouse_position[1],0))
         
         search_obstructed=context.space_data.shading.show_xray or not self.settings.filter_search_obstructed
-        
+        depsgraph=context.evaluated_depsgraph_get()
         if self.current_state==State.IDLE:
+            (direct_hit,_,_,_,direct_hit_object,_)=context.scene.ray_cast(context.evaluated_depsgraph_get(),origin=view_position,direction=mouse_vector)
+            if(direct_hit and direct_hit_object.name in self.selection_meshes):
+                self.vertex_source_data_v2.add_mesh_target(context, direct_hit_object.name,depsgraph=depsgraph,is_selected=True,set_first_priority=True) #bring direct hit to the top of the to_process stack if needed.
             closest=self.vertex_source_data_v2.find_closest(context,mouse_coord_screen_flat, self.view_location,search_obtructed=search_obstructed,search_origins_only=self.snap_to_origins)
             if closest!=None:
                 (self.closest_source_id, self.distance, target_name,is_root)=closest
@@ -208,7 +206,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 bpy.context.window.cursor_set("CROSSHAIR")    
         elif self.current_state==State.SOURCE_PICKED:
             
-            depsgraph=context.evaluated_depsgraph_get()
+            
             if self.snap_to_origins:
                 closest=self.vertex_target_data_v2.find_closest(context,mouse_coord_screen_flat, self.view_location,search_origins_only=True)
                 if closest!=None:
@@ -218,37 +216,58 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     self.closest_target_id = -1
                     self.distance = -1
                     self.set_target_object("")
-                return
-            for object in self.selection_meshes:
-                bpy.data.objects[object].hide_set(True)
-            (direct_hit,_,_,_,direct_hit_object,_)=context.scene.ray_cast(context.evaluated_depsgraph_get(),origin=view_position,direction=mouse_vector)
-            if(direct_hit):
-                self.vertex_target_data_v2.add_mesh_target(context, direct_hit_object.name,depsgraph=depsgraph) #bring direct hit to the top of the to_process stack if needed.
-            for object in self.vertex_target_data_v2.processed:
-                bpy.data.objects[object].hide_set(True)
-
-            #add close objects to the to_process list
-            close_objects=check_close_objects(context,region,context.evaluated_depsgraph_get(),mouse_position=self.mouse_position) 
-            for object in self.vertex_target_data_v2.processed: #unhiding processed objects, for obstruction check
-                bpy.data.objects[object].hide_set(False)
-            for object in close_objects:
-                self.vertex_target_data_v2.add_mesh_target(context, object.name,depsgraph=depsgraph)
-
-            for object in self.selection_meshes:
-                bpy.data.objects[object].hide_set(False)
-            for object in self.selection_meshes: #re-select selection
-                bpy.data.objects[object].select_set(True)            
             
-            #Find closest targets
-            closest=self.vertex_target_data_v2.find_closest(context,mouse_coord_screen_flat, self.view_location,search_obtructed=search_obstructed)
-            if closest!=None:
-                (self.closest_target_id, self.distance, target_object_name,is_root)=closest
-                self.set_target_object(target_object_name,is_root)
             else:
-                self.closest_target_id = -1
-                self.distance = -1
-                self.set_target_object("")
-            # pass
+                for object in self.selection_meshes:
+                    bpy.data.objects[object].hide_set(True)
+                (direct_hit,_,_,_,direct_hit_object,_)=context.scene.ray_cast(context.evaluated_depsgraph_get(),origin=view_position,direction=mouse_vector)
+                if(direct_hit):
+                    self.vertex_target_data_v2.add_mesh_target(context, direct_hit_object.name,depsgraph=depsgraph,set_first_priority=True) #bring direct hit to the top of the to_process stack if needed.
+                for object in self.vertex_target_data_v2.processed:
+                    bpy.data.objects[object].hide_set(True)
+    
+                #add close objects to the to_process list
+                close_objects=check_close_objects(context,region,context.evaluated_depsgraph_get(),mouse_position=self.mouse_position) 
+                for object in self.vertex_target_data_v2.processed: #unhiding processed objects, for obstruction check
+                    bpy.data.objects[object].hide_set(False)
+                for object in close_objects:
+                    self.vertex_target_data_v2.add_mesh_target(context, object.name,depsgraph=depsgraph)
+    
+                for object in self.selection_meshes:
+                    bpy.data.objects[object].hide_set(False)
+                for object in self.selection_meshes: #re-select selection
+                    bpy.data.objects[object].select_set(True)            
+                
+                #Find closest targets
+                closest=self.vertex_target_data_v2.find_closest(context,mouse_coord_screen_flat, self.view_location,search_obtructed=search_obstructed)
+                if closest!=None:
+                    (self.closest_target_id, self.distance, target_object_name,is_root)=closest
+                    self.set_target_object(target_object_name,is_root)
+                else:
+                    self.closest_target_id = -1
+                    self.distance = -1
+                    self.set_target_object("")
+                # pass
+            
+        axis_msg=""
+        snapping_msg=f"Use (Shift+)X/Y/Z to constraint to the world/local axis or plane. Use O to snap to object origins. Right Mouse Button/ESC to cancel the operation. "
+        if self.snap_to_origins:
+            snapping_msg="Snapping to origins only. "
+        if len(self.snapping)>0:
+            if not self.snap_to_origins:
+                snapping_msg=""
+            if len(self.snapping)==1:
+                snapping_msg=f"{snapping_msg}Constrained on {self.snapping} axis"
+            if len(self.snapping)==2:
+                snapping_msg=f"{snapping_msg}Constrained on {self.snapping} plane"
+            if self.snapping_local:
+                axis_msg=("(Local)")
+            else:
+                axis_msg=("(World)")
+        if self.current_state==State.IDLE:
+            context.area.header_text_set(f"QuickSnap: Pick the source vertex/point. {snapping_msg}{axis_msg}")
+        elif  self.current_state==State.SOURCE_PICKED:
+            context.area.header_text_set(f"QuickSnap: Move the mouse over the target vertex/point. {snapping_msg}{axis_msg}")
             
     def apply(self,context):
         self.target=None
@@ -279,7 +298,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                      for  obj_name in self.backup_object_positions:
                          quicksnap_utils.translate_object_worldspace(bpy.data.objects[obj_name],translation)
                 else:
-                    # print("apply no snapping")
+                    # logger.info("apply no snapping")
                     object_mode_backup=quicksnap_utils.set_object_mode_if_needed()
                     for object_name in self.backup_vertice_positions:
                         obj=bpy.data.objects[object_name]
@@ -287,7 +306,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                             vertexids=[vert[0] for vert in self.backup_vertice_positions[object_name]]
                             quicksnap_utils.translate_vertice_worldspace(obj,self.bmeshs[object_name],vertexids,translation)
                         elif obj.type=="CURVE":
-                            print(f"Apply - backupdata={self.backup_vertice_positions[object_name][0]}")
+                            logger.info(f"Apply - backupdata={self.backup_vertice_positions[object_name][0]}")
                             quicksnap_utils.translate_curvepoints_worldspace(obj,self.backup_vertice_positions[object_name],translation)
                     quicksnap_utils.revert_mode(object_mode_backup)                
             else:
@@ -325,14 +344,14 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
     def __init__(self):
         pass
-        # print("Start")
+        # logger.info("Start")
 
     def __del__(self):   
         pass
-        # print("End")
+        # logger.info("End")
         
     def refresh_vertex_data(self,context,event):
-        # print("refresh data")
+        # logger.info("refresh data")
         region3d=context.space_data.region_3d
         self.view_location=region3d.view_matrix.inverted().translation
         self.perspective_matrix=context.space_data.region_3d.perspective_matrix
@@ -348,8 +367,13 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.vertex_target_data_v2.__init__(context,region,self.selection_meshes,quicksnap_utils.get_scene_meshes(True))
         
 
-    def modal(self, context, event):     
-        self.vertex_target_data_v2.process_iteration(context)
+    def modal(self, context, event):
+        if self.current_state==State.IDLE:
+            self.vertex_source_data_v2.process_iteration(context)
+            if self.vertex_source_data_v2.iteration_finished:
+                self.vertex_target_data_v2.process_iteration(context)
+        else:
+            self.vertex_target_data_v2.process_iteration(context)
         context.area.tag_redraw()
         self.handle_snap_hotkey(context,event)
         
@@ -365,9 +389,9 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             self.update_mouse_position(context,event)
             self.update(context)
             self.apply(context)
+            
         elif event.type == 'LEFTMOUSE':  # Confirm
             if self.current_state==State.IDLE and self.closest_source_id>=0 and self.closest_actionnable:
-                context.area.header_text_set(f"QuickSnap: Move the mouse over the target vertex/point. Use (Shift+)X/Y/Z to constraint to the world/local axis or plane. Use O to snap to object origins. Right Mouse Button/ESC to cancel the operation")
                 self.current_state=State.SOURCE_PICKED
                 self.set_target_object("")
             else:  
@@ -380,7 +404,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def handle_snap_hotkey(self,context,event):
-        # print(f"Event: {event.type}")
+        # logger.info(f"Event: {event.type}")
         if event.is_repeat or event.value!='PRESS':
             return
         event_type=event.type
@@ -435,7 +459,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             self.apply(context)
             
     def terminate(self,context,revert=False):
-        # print("terminate")
+        # logger.info("terminate")
         if revert:
             self.revert_data(context,apply=True)
             
@@ -546,7 +570,6 @@ blender_classes = [
 
 
 def register():
-    print(f"Hello QuickExport - __name__={__name__}")
     for blender_class in blender_classes:
         bpy.utils.register_class(blender_class)
     # bpy.utils.register_tool(MYADDONNAME_TOOL_mytool,separator=True)

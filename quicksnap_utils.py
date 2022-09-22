@@ -1,10 +1,9 @@
-﻿import bpy
+﻿import bpy,mathutils,logging
 from mathutils import Vector
-import mathutils
 from enum import Enum
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
-
+logger = logging.getLogger(__name__)
 
 class State(Enum):
     IDLE = 1
@@ -58,10 +57,10 @@ def has_parent(object,parent_list):
     return has_parent(parent,parent_list)
 
 def set_object_mode_if_needed():
-    # print("entering object mode if needed")
+    # logger.info("entering object mode if needed")
     mode= f'{bpy.context.active_object.mode}'
     if mode=='EDIT':
-        # print('Going to Object Mode')
+        # logger.info('Going to Object Mode')
         bpy.ops.object.mode_set(mode='OBJECT')
     return mode
 def revert_mode(previous_mode):
@@ -80,11 +79,11 @@ def translate_vertice_worldspace(object,bmesh,vertexids,translation):
 
 
 def dump(object):
-    print(f"\n\n=============== Dump({object}) ===============")
+    logger.info(f"\n\n=============== Dump({object}) ===============")
     for attr in dir(object):
         if hasattr(object,attr):
-            print(f'{attr} : {getattr(object,attr)}')
-    print(f"=============== END Dump({object}) ===============\n\n")
+            logger.info(f'{attr} : {getattr(object,attr)}')
+    logger.info(f"=============== END Dump({object}) ===============\n\n")
 
 def get_addon_settings():
     addon = bpy.context.preferences.addons.get(__name_addon__)
@@ -101,7 +100,7 @@ def get_axis_target(origin, target, snapping, object=None):
     else:
         world_matrix=object.matrix_world.to_quaternion()
         
-    # print("Object is none")
+    # logger.info("Object is none")
     if len(snapping)==1: #single axis snapping
         if snapping=='X':
             point2=origin+world_matrix@Vector((1,0,0))
@@ -140,7 +139,7 @@ def get_target_nosnap(origin, camera_position, camera_vector, snapping, object=N
         world_matrix=object.matrix_world.to_quaternion()
         
     if len(snapping)==1: #single axis snapping
-        print("snapping 1")
+        logger.info("snapping 1")
         if snapping=='X':
             point2=origin+world_matrix@Vector((1,0,0))
         elif snapping=='Y':

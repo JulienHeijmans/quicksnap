@@ -1,8 +1,8 @@
-﻿import bpy,gpu,blf,bgl
+﻿import bpy, gpu, blf, bgl, logging
 from gpu_extras.batch import batch_for_shader
 from .quicksnap_utils import State
 from mathutils import Vector
-
+logger = logging.getLogger(__name__)
 
 shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
 square_indices=((0, 1), (1, 2), (2, 3), (3, 0))
@@ -97,12 +97,11 @@ def draw_points_3d(coords,color=(1, 1, 0, 1),point_width=3,depth_test=False):
 
 
 def draw_callback_2D(self, context):
-
     if self.closest_source_id>=0:
         closest_position_2d=self.vertex_source_data_v2.region_2d[self.closest_source_id]
         source_x, source_y = closest_position_2d[0],closest_position_2d[1]
         #Source selection
-        if not self.current_state==State.SOURCE_PICKED:#no source picked
+        if self.current_state==State.IDLE:#no source picked
             draw_square_2d(source_x,source_y,7)
             # # draw some text
             # font_id = 0  # XXX, need to find out how best to get this.
@@ -112,7 +111,6 @@ def draw_callback_2D(self, context):
             # blf.draw(font_id, f'Distance={self.distance}')
 
         else:
-            
             if self.closest_target_id>=0:
                 # font_id = 0  # XXX, need to find out how best to get this.
                 # font_offset = 10

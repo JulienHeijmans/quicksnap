@@ -7,7 +7,7 @@ bl_info = {
     "description": "Quickly snap objects/vertices/curve points"
 }
 
-import importlib,sys
+import importlib,sys,logging
     
 modulesNames = ['quicksnap_utils','quicksnap_snapdata','quicksnap']
 
@@ -38,4 +38,10 @@ def unregister():
                 sys.modules[currentModuleName].unregister()
                 
 
-print(f"init file - {__name__}")
+logger = logging.getLogger(__name__)
+logger.handlers = []
+# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.NOTSET)
+console_handler=logging.StreamHandler()
+console_handler.setFormatter(fmt=logging.Formatter('[%(levelname)s] %(asctime)s %(message)s'))
+logger.addHandler(console_handler)

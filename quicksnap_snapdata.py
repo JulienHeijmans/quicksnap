@@ -1,14 +1,14 @@
-﻿import bpy
+﻿import bpy,mathutils,logging
 from mathutils import Vector
-import mathutils
 from datetime import datetime
 from . import quicksnap_utils
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
-
+logger = logging.getLogger(__name__)
 class SnapData():
     def __init__(self, context,region,selected_meshes,scene_meshes=None):
         self.is_source=scene_meshes==None
+        self.iteration_finished=False
         self.width_half = region.width / 2.0
         self.height_half = region.height / 2.0
         self.width = region.width
@@ -29,7 +29,6 @@ class SnapData():
         self.verts_data={}
         self.origins_map={}
         self.snap_origins=quicksnap_utils.get_addon_settings().snap_objects_origin
-        self.is_enabled=True
         self.object_mode=context.active_object.mode=='OBJECT'
         max_vertex_count=self.get_max_vertex_count(context,selected_meshes,scene_meshes)
 
@@ -38,11 +37,12 @@ class SnapData():
         if scene_meshes:
             self.scene_meshes=scene_meshes.copy()
             self.scene_meshes.extend(selected_meshes.copy())
-            self.kd_origins=mathutils.kdtree.KDTree(len(scene_meshes))
+            self.kd_origins=mathutils.kdtree.KDTree(len(self.scene_meshes))
+            logger.info(f"self.kd_origins scene meshes: {len(self.scene_meshes)}")
         else:
             self.scene_meshes=selected_meshes.copy()
             self.kd_origins=mathutils.kdtree.KDTree(len(selected_meshes))
-
+            logger.info(f"self.kd_origins selection: {len(selected_meshes)}")
         self.add_scene_roots(context,selected_meshes,scene_meshes)
 
         self.meshes_selection=selected_meshes
@@ -62,16 +62,17 @@ class SnapData():
                 self.add_object_source(context, selected_mesh)
 
         if self.is_source:
-            self.process_iteration(context,max_run_duration=5)
+            self.process_iteration(context)
+            # self.process_iteration(context,max_run_duration=5)
 
 
-    def add_mesh_target(self, context, object_name, is_selected=False,depsgraph=None):
+    def add_mesh_target(self, context, object_name, is_selected=False,depsgraph=None,set_first_priority=False):
         if object_name in self.processed:
             return
         if is_selected:
             if object_name in self.to_process_selected:
                 if self.to_process_selected.index(object_name)>0:
-                    # print(f"Addmesh:{object_name} - PRIORITIZE SELECTED")
+                    logger.info(f"Addmesh:{object_name} - PRIORITIZE SELECTED")
                     self.to_process_selected.remove(object_name)
                     self.to_process_selected.insert(0,object_name)
             else:
@@ -85,12 +86,12 @@ class SnapData():
                 self.to_process_vcount[object_name]=0
         else:
             if object_name in self.to_process_scene:
-                if self.to_process_scene.index(object_name)>0:
-                    # print(f"Addmesh:{object_name} - PRIORITIZE SCENE")
+                if self.to_process_scene.index(object_name)>0 and set_first_priority:
+                    logger.info(f"Addmesh:{object_name} - PRIORITIZE SCENE")
                     self.to_process_scene.remove(object_name)
                     self.to_process_scene.insert(0,object_name)
             else:
-                # print(f"Addmesh:{object_name} -  FIRST ADD Scene")
+                logger.info(f"Addmesh:{object_name} -  FIRST ADD Scene")
                 obj=bpy.data.objects[object_name].evaluated_get(depsgraph)
                 if obj.type=='MESH':
                     self.verts_data[object_name]=[(vert.index,vert.co.copy(),vert.select,0,0) for vert in obj.data.vertices]
@@ -98,7 +99,7 @@ class SnapData():
                     self.verts_data[object_name]=quicksnap_utils.flatten([[(index,point.co.copy(),point.select_control_point,spline_index,1) for index,point in enumerate(spline.bezier_points)] for spline_index,spline in enumerate(obj.data.splines)])
                     self.verts_data[object_name].extend(quicksnap_utils.flatten([[(index,Vector((point.co[0],point.co[1],point.co[2])),point.select,spline_index,0) for index,point in enumerate(spline.points)] for spline_index,spline in enumerate(obj.data.splines)]))
                 self.to_process_vcount[object_name]=0
-                self.to_process_scene.insert(0,object_name)
+                self.to_process_scene.append(object_name)
 
     def add_scene_roots(self,context,selected_meshes,scene_meshes=None):
         insert_start_index=len(self.region_2d)
@@ -113,6 +114,7 @@ class SnapData():
                 add_roots=set(add_roots)
             else:
                 add_roots=[object_name for object_name in scene_meshes if object_name not in selected_meshes]
+            logger.info(f"add_scene_roots: {len(add_roots)}")
             for object_name in add_roots:
                 self.add_object_root(context,object_name)
 
@@ -122,20 +124,20 @@ class SnapData():
 
 
         if self.snap_origins=="ALWAYS":
-            # print(f"Origins inserted... adding origins to all trees and balancing trees")
+            # logger.debug(f"Origins inserted... adding origins to all trees and balancing trees")
             self.balance_tree(insert_start_index)
             self.kd_origins.balance()
         else:
             self.balance_tree()
-            # print(f"Origins inserted... balancing trees")
+            # logger.debug(f"Origins inserted... balancing trees")
             self.kd_origins.balance()
 
     def add_object_root(self,context,object_name):
-        # print(f"Add object root: {object_name}")
+        # logger.debug(f"Add object root: {object_name}")
         if not self.add_vertex(context,Vector((0,0,0)),bpy.data.objects[object_name].matrix_world,self.scene_meshes.index(object_name)):
             return
         insert_index=len(self.region_2d)-1
-
+        logger.info(f"add_object_root: {object_name}")
         self.origins_map[insert_index]=object_name
         self.kd_origins.insert(Vector((self.region_2d[insert_index][0],self.region_2d[insert_index][1],0)),insert_index)
 
@@ -148,7 +150,7 @@ class SnapData():
         elif  obj.type=='CURVE':
             self.verts_data[object_name]=quicksnap_utils.flatten([[(index,point.co.copy(),point.select_control_point,spline_index,1) for index,point in enumerate(spline.bezier_points)] for spline_index,spline in enumerate(obj.data.splines)])
             self.verts_data[object_name].extend(quicksnap_utils.flatten([[(index,Vector((point.co[0],point.co[1],point.co[2])),point.select,spline_index,0) for index,point in enumerate(spline.points)] for spline_index,spline in enumerate(obj.data.splines)]))
-            print(self.verts_data[object_name])
+            logger.debug(self.verts_data[object_name])
 
         quicksnap_utils.revert_mode(current_mode)
         self.selected_ids[object_name]=[]
@@ -187,11 +189,11 @@ class SnapData():
         object_index=self.scene_meshes.index(object_name)
         verts_data=self.verts_data[object_name]
         end_vertex_index=min(start_vertex_index+vertex_batch,vertice_count-1)
-        # print(f"====START==== process_mesh_batch from {start_vertex_index} to {end_vertex_index} --Start len(self.region_2d):{len(self.region_2d)} - is_selected={is_selected} - vertex count={len(verts_data)}")
+        # logger.debug(f"====START==== process_mesh_batch from {start_vertex_index} to {end_vertex_index} --Start len(self.region_2d):{len(self.region_2d)} - is_selected={is_selected} - vertex count={len(verts_data)}")
 
 
         if self.is_source:
-            # print("Process source batch")
+            # logger.debug("Process source batch")
             if self.object_mode:
                 for vertex in range(start_vertex_index,end_vertex_index+1):
                     (index,co,selected,spline_index,bezier)=verts_data[vertex]
@@ -206,28 +208,28 @@ class SnapData():
                     self.selected_ids[object_name].append((index,co,spline_index,bezier))
         else:
             if is_selected: #If we were in object mode, we can add unselected vertice to the target vertice.    
-                # print(f"Process target batch - is selected")
+                # logger.debug(f"Process target batch - is selected")
                 for vertex in range(start_vertex_index,end_vertex_index+1):
                     (index,co,selected,spline_index,bezier)=verts_data[vertex]
                     if selected: # skip_selected vertice
                         continue
                     self.add_vertex(context,co,world_space_matrix,object_index)
             else:
-                # print(f"Process target batch - not selected")
+                # logger.debug(f"Process target batch - not selected")
                 for vertex in range(start_vertex_index,end_vertex_index+1):
                     (index,co,selected,spline_index,bezier)=verts_data[vertex]
                     self.add_vertex(context,co,world_space_matrix,object_index)
-        # print(f"====END==== process_mesh_batch from {start_vertex_index} to {end_vertex_index} --End len(self.region_2d):{len(self.region_2d)}")
+        # logger.debug(f"====END==== process_mesh_batch from {start_vertex_index} to {end_vertex_index} --End len(self.region_2d):{len(self.region_2d)}")
         return end_vertex_index
 
     def balance_tree(self,start_index=None):
-        # print(f"balance_tree - Source:{self.is_source}")
+        # logger.debug(f"balance_tree - Source:{self.is_source}")
         if start_index!=None:
             insert=self.kd.insert
             insert_obstructed=self.kd_obstructed.insert
-            # print(f"Inserting from {start_index} to {len(self.region_2d)-1}. Then balance tree.")
+            # logger.debug(f"Inserting from {start_index} to {len(self.region_2d)-1}. Then balance tree.")
             for i in range(start_index,len(self.region_2d)):
-                # print(f"Inserting {i}")
+                # logger.debug(f"Inserting {i}")
                 if self.obstructed[i]:
                     insert_obstructed(self.region_2d[i], i)
                 else:
@@ -237,24 +239,24 @@ class SnapData():
 
 
 
-    def process_iteration(self,context,max_run_duration=0.002):
-        if not self: return
+    def process_iteration(self,context,max_run_duration=0.003):
+        if not self or self.iteration_finished: return
         start_time=datetime.now()
         elapsed_time=0
         current_tree_index=len(self.region_2d)
-        # print(f"process_iteration - source={self.is_source}")
+        # logger.debug(f"process_iteration - source={self.is_source}")
         if (self.is_source or not self.object_mode) and len(self.to_process_selected)>0:
-            # print(f"Process selection - source={self.is_source}")
+            # logger.debug(f"Process selection - source={self.is_source}")
             for object_name in self.to_process_selected.copy():
                 object=bpy.data.objects[object_name]
                 world_space_matrix=object.matrix_world
                 vertex_count=len(self.verts_data[object_name])
                 current_vertex_index=self.to_process_vcount[object_name]
-                # print(f"process_iteration selected: {object_name} - Current vertex index:{current_vertex_index} - vertex count:{vertex_count}")
+                # logger.debug(f"process_iteration selected: {object_name} - Current vertex index:{current_vertex_index} - vertex count:{vertex_count}")
                 while(current_vertex_index<vertex_count-1):
                     current_vertex_index=self.process_mesh_batch(context, object_name, True, world_space_matrix, current_vertex_index, vertex_count)
                     if(current_vertex_index>=vertex_count-1):
-                        # print(f"process_iteration selected:{object_name} - ALL VERTS ADDED - Current={current_vertex_index}")  
+                        # logger.debug(f"process_iteration selected:{object_name} - ALL VERTS ADDED - Current={current_vertex_index}")  
                         del self.verts_data[object_name]
                         self.to_process_selected.remove(object_name)
                         del self.to_process_vcount[object_name]
@@ -271,11 +273,15 @@ class SnapData():
                     self.balance_tree(current_tree_index)
                     return
         if self.is_source:
-            # print(f"Process iteration. Not processing scene={self.to_process_scene}")
+            if len(self.to_process_selected)==0:
+                logger.debug("Process iteration source - finished")
+                self.iteration_finished=True
+                return
+            # logger.debug(f"Process iteration. Not processing scene={self.to_process_scene}")
             return
         if len(self.to_process_scene)>0:
-            # print(f"Process Scene - source={self.is_source}")
-            # print(f"Process iteration. To_Process={self.to_process_scene}")
+            # logger.debug(f"Process Scene - source={self.is_source}")
+            # logger.debug(f"Process iteration. To_Process={self.to_process_scene}")
             for selected_object in self.meshes_selection:
                 bpy.data.objects[selected_object].hide_set(True)
             for object_name in self.to_process_scene.copy():
@@ -283,12 +289,12 @@ class SnapData():
                 world_space_matrix=object.matrix_world
                 vertex_count=len(self.verts_data[object_name])
                 current_vertex_index=self.to_process_vcount[object_name]
-                # print(f"process_iteration unselected: {object_name} - Current vertex index:{current_vertex_index} - vertex count:{vertex_count}")
+                # logger.debug(f"process_iteration unselected: {object_name} - Current vertex index:{current_vertex_index} - vertex count:{vertex_count}")
 
                 while(current_vertex_index<vertex_count-1):
                     current_vertex_index=self.process_mesh_batch(context, object_name, False, world_space_matrix, current_vertex_index, vertex_count)
                     if(current_vertex_index>=vertex_count-1):
-                        # print(f"process_iteration unselected:{object_name} - ALL VERTS ADDED - Current={current_vertex_index} - total kdtree verts={len(self.world_space)}")                       
+                        # logger.debug(f"process_iteration unselected:{object_name} - ALL VERTS ADDED - Current={current_vertex_index} - total kdtree verts={len(self.world_space)}")                       
                         del self.verts_data[object_name]
                         self.to_process_scene.remove(object_name)
                         del self.to_process_vcount[object_name]
@@ -303,7 +309,7 @@ class SnapData():
                         self.to_process_vcount[object_name]=current_vertex_index+1
                         self.balance_tree(current_tree_index)
                         return
-                # print(f"All vertex done, there is time left")
+                # logger.debug(f"All vertex done, there is time left")
                 if(elapsed_time>max_run_duration):
                     for selected_object in self.meshes_selection:
                         bpy.data.objects[selected_object].hide_set(False)
@@ -356,7 +362,7 @@ class SnapData():
         return  closest_point_data
 
     def get_max_vertex_count(self,context,selected_meshes,scene_meshes):
-        # print(f"get_max_vertex_count - source={self.is_source}")
+        # logger.debug(f"get_max_vertex_count - source={self.is_source}")
         if self.is_source:
             # max_vertex_count=sum([len(bpy.data.objects[mesh_name].data.vertices) for mesh_name in selected_meshes])
             max_vertex_count=len(selected_meshes)
@@ -366,16 +372,16 @@ class SnapData():
                     max_vertex_count+=len(obj.data.vertices)
                 elif obj.type=='CURVE':
                     # for spline in obj.data.splines:
-                    #     print(f"Spline - {(len(spline.points) + len(spline.bezier_points))}")
+                    #     logger.debug(f"Spline - {(len(spline.points) + len(spline.bezier_points))}")
                     max_vertex_count+=sum([(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])
         else:
             if(bpy.context.active_object.mode=='OBJECT'):
                 stats_string=context.scene.statistics(context.view_layer)
-                # print(f"stats_string: {stats_string} ")
+                # logger.debug(f"stats_string: {stats_string} ")
                 max_vertex_count=int([val for val in stats_string.split('|') if 'Verts' in val][0].split(':')[1].replace('.','').replace(',',''))
             else: #Slow, need to find faster way of getting scene vertex count.
                 stats_string=context.scene.statistics(context.view_layer)
-                # print(f"stats_string: {stats_string} ")
+                # logger.debug(f"stats_string: {stats_string} ")
                 max_vertex_count=0
                 depsgraph = context.evaluated_depsgraph_get()
                 for obj_name in scene_meshes:
@@ -384,10 +390,10 @@ class SnapData():
                         max_vertex_count+=len(obj.evaluated_get(depsgraph).data.vertices)
                     elif obj.type=='CURVE':
                         # for spline in obj.data.splines:
-                        #     print(f"Spline - {(len(spline.points) + len(spline.bezier_points))}")
+                        #     logger.debug(f"Spline - {(len(spline.points) + len(spline.bezier_points))}")
                         max_vertex_count+=sum([(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])
                 # max_vertex_count=sum(len(bpy.data.objects[object_name].evaluated_get(depsgraph).data.vertices) for object_name in scene_meshes)
 
                 # revert_mode(previous_mode)
-        # print(f"Max vertex count: {max_vertex_count} - source={self.is_source}")
+        # logger.debug(f"Max vertex count: {max_vertex_count} - source={self.is_source}")
         return max_vertex_count
