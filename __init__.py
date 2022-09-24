@@ -1,3 +1,7 @@
+import importlib
+import logging
+import sys
+
 bl_info = {
     "name": "QuickSnap",
     "author": "Julien Heijmans",
@@ -7,10 +11,8 @@ bl_info = {
     "description": "Quickly snap objects/vertices/curve points"
 }
 
-import importlib,sys,logging
-    
-modulesNames = ['quicksnap_utils','quicksnap_snapdata','quicksnap']
 
+modulesNames = ['quicksnap_utils', 'quicksnap_snapdata', 'quicksnap']
 
 modulesFullNames = {}
 for currentModuleName in modulesNames:
@@ -24,24 +26,24 @@ for currentModuleFullName in modulesFullNames.values():
         setattr(globals()[currentModuleFullName], 'modulesNames', modulesFullNames)
 
 
-
 def register():
-    for currentModuleName in modulesFullNames.values():
-        if currentModuleName in sys.modules:
-            if hasattr(sys.modules[currentModuleName], 'register'):
-                sys.modules[currentModuleName].register()        
+    for current_module_name in modulesFullNames.values():
+        if current_module_name in sys.modules:
+            if hasattr(sys.modules[current_module_name], 'register'):
+                sys.modules[current_module_name].register()
 
-def unregister():   
-    for currentModuleName in modulesFullNames.values():
-        if currentModuleName in sys.modules:
-            if hasattr(sys.modules[currentModuleName], 'unregister'):
-                sys.modules[currentModuleName].unregister()
-                
+
+def unregister():
+    for current_module_name in modulesFullNames.values():
+        if current_module_name in sys.modules:
+            if hasattr(sys.modules[current_module_name], 'unregister'):
+                sys.modules[current_module_name].unregister()
+
 
 logger = logging.getLogger(__name__)
 logger.handlers = []
 # logger.setLevel(logging.DEBUG)
 logger.setLevel(logging.NOTSET)
-console_handler=logging.StreamHandler()
+console_handler = logging.StreamHandler()
 console_handler.setFormatter(fmt=logging.Formatter('[%(levelname)s] %(asctime)s %(message)s'))
 logger.addHandler(console_handler)
