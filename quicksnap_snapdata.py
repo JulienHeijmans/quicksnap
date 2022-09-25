@@ -1,6 +1,4 @@
-﻿
-
-import bpy
+﻿import bpy
 import numpy as np
 import time
 import logging
@@ -20,6 +18,7 @@ def time_it(func):
             func(*arg, **kw)
         t2 = time.time()
         print(func.__name__, (t2 - t1))
+
     return wrapper
 
 
@@ -32,33 +31,130 @@ class ObjectPointData:
     -screen_space_co
     -processed_point_count
     """
-    def __init__(self,  obj, coords_data, object_id, perspective_matrix, width, height, width_half, height_half):
+
+    def __init__(self, obj, object_id, perspective_matrix, width, height, width_half, height_half, view_location,
+                 check_select=False,
+                 filter_selected=True):
+        self.completed = False
+        print(f"ObjectPointData {obj.name}- check_select={check_select}")
         matrix_world = obj.matrix_world
-        self.count = len(coords_data)
-        shape = (self.count, 3)
+        if obj.type == 'MESH':
+            vertices = obj.data.vertices
+            self.count = len(vertices)
+            shape = (self.count, 3)
 
-        # Copy verts co points
-        verts_objectspace = np.empty(self.count * 3, dtype=np.float64)
-        coords_data.foreach_get('co', verts_objectspace)
-        verts_objectspace.shape = shape
+            # Copy verts co points
+            points_object_space = np.empty(self.count * 3, dtype=np.float64)
+            vertices.foreach_get('co', points_object_space)
+            points_object_space.shape = shape
+            if check_select:
+                selected_mask = np.empty(self.count, dtype=bool)
+                vertices.foreach_get('select', selected_mask)
+                if filter_selected:
+                    points_object_space = points_object_space[selected_mask]
+                else:
+                    points_object_space = points_object_space[~selected_mask]
 
-        # Copy verts co points
-        self.world_space_co = np.ones(shape=(self.count, 4), dtype=np.float64)
-        self.world_space_co[:, :-1] = verts_objectspace  # cos v (x,y,z,1) - point,   v(x,y,z,0)- vector
-        self.world_space_co = np.einsum('ij,aj->ai', matrix_world, self.world_space_co)
+        if obj.type == 'CURVE':
+            all_points = quicksnap_utils.flatten(
+                [[point.co for point in spline.bezier_points] for spline in obj.data.splines])
+            all_points.extend(quicksnap_utils.flatten([[Vector((point.co[0], point.co[1], point.co[2]))
+                                                        for point in spline.points] for spline in obj.data.splines]))
+            self.count = len(all_points)
+            shape = (self.count, 3)
 
-        verts_viewspace = np.einsum('ij,aj->ai', perspective_matrix, self.world_space_co)  # Matrix mult
-        verts_viewspace = verts_viewspace[(verts_viewspace[:, 3] > 0)]  # Filtering behind camera
+            # Copy verts co points
+            points_object_space = np.array(all_points)
+            points_object_space.shape = shape
+            if check_select:
+                selected_mask = quicksnap_utils.flatten(
+                    [[point.select_control_point for point in spline.bezier_points] for spline in obj.data.splines])
+                selected_mask.extend(quicksnap_utils.flatten([[point.select for point in spline.points] for spline in
+                                                              obj.data.splines]))
+                selected_mask = np.array(selected_mask)
+                if filter_selected:
+                    points_object_space = points_object_space[selected_mask]
+                else:
+                    points_object_space = points_object_space[~selected_mask]
 
-        self.screen_space_co = np.column_stack((width_half+(verts_viewspace[:, 0]/verts_viewspace[:, 3])*width_half,
-                                                height_half+(verts_viewspace[:, 1]/verts_viewspace[:, 3])*height_half))
-        self.screen_space_co = self.screen_space_co[(self.screen_space_co[:, 0] > 0) &
-                                                    (self.screen_space_co[:, 1] > 0) &
-                                                    (self.screen_space_co[:, 0] < width) &
-                                                    (self.screen_space_co[:, 1] < height)]
+        # Get WorldSpace
+        world_space_co = np.ones(shape=(len(points_object_space), 4), dtype=np.float64)
+        world_space_co[:, :-1] = points_object_space  # cos v (x,y,z,1) - point,   v(x,y,z,0)- vector
+        world_space_co = np.einsum('ij,aj->ai', matrix_world, world_space_co)
+        self.world_space_co = world_space_co[:, :-1]
 
+        # Get ViewSpace
+        verts_viewspace = np.einsum('ij,aj->ai', perspective_matrix, world_space_co)  # Matrix mult
+        filter_behind_camera = (verts_viewspace[:, 3] > 0)
+        verts_viewspace = verts_viewspace[filter_behind_camera]  # Filtering behind camera
+
+        # Get 2dScreenSpace
+        self.screen_space_co = np.column_stack(
+            (width_half + (verts_viewspace[:, 0] / verts_viewspace[:, 3]) * width_half,
+             height_half + (verts_viewspace[:, 1] / verts_viewspace[:, 3]) * height_half))
+        filter_outside_viewport = (self.screen_space_co[:, 0] > 0) & (self.screen_space_co[:, 1] > 0) & (
+                self.screen_space_co[:, 0] < width) & (self.screen_space_co[:, 1] < height)
+        self.screen_space_co = self.screen_space_co[filter_outside_viewport]
+
+        # Raycast vars
+        view_location = np.array(view_location)
+        world_space_3d = self.world_space_co
+        point_to_cam_vector = np.subtract(world_space_3d, view_location)
+        self.raycast_distance = np.sqrt(np.einsum("ij,ij->i", point_to_cam_vector, point_to_cam_vector))
+        self.raycast_direction = point_to_cam_vector / self.raycast_distance[:, None]
+
+        # Misc
         self.object_id = object_id
+        self.obstructed = []
         self.processed_point_count = 0
+
+    def get_points_data(self, context, view_location, kdtree_insert, kdtree_obstructed_insert, kdtree_insert_index, batch_size):
+        start_index=self.processed_point_count
+        end_index = min(self.processed_point_count + batch_size, self.count - 1)
+        result_points = []
+        # print(f"start index:{start_index} - endIndex={end_index} - batch_size={batch_size}")
+        for counter, index in enumerate(range(start_index, end_index + 1)):
+            insert_id=kdtree_insert_index + counter
+            # world_space[insert_id]=self.world_space_co[index]
+            # coord_2d[insert_id]=self.screen_space_co[index]
+            # object_id[insert_id]=self.object_id
+            # world_space.append(self.world_space_co[index])
+            # coord_2d.append(self.screen_space_co[index])
+            # object_id.append(self.object_id)
+            # (hit, hit_location, _, _, _, _) = bpy.context.scene.ray_cast(context.evaluated_depsgraph_get(),
+
+            # hit = bpy.context.scene.ray_cast(context.evaluated_depsgraph_get(),
+            #                                                              origin=view_location,
+            #                                                              direction=self.raycast_direction[index],
+            #                                                              distance=self.raycast_distance[index])
+            # if not hit[0] or not (np.linalg.norm(np.array(hit[1])-self.world_space_co[index]) >= 0.001 * self.raycast_distance[index]):
+            # if not hit[0] or not (np.sqrt(np.sum((np.array(hit[1])-self.world_space_co[index])**2)) >= 0.001 * self.raycast_distance[index]):
+            kdtree_insert(self.world_space_co[index], insert_id)
+            continue
+            if not hit[0]:
+                kdtree_insert(self.world_space_co[index], insert_id)
+                # self.obstructed.append(False)
+            else:
+
+                vec = Vector(np.array(hit[1])-self.world_space_co[index])
+                # if np.sqrt(np.dot(vec.T, vec)) >= 0.001 * self.raycast_distance[index]:
+                if vec.length >= 0.001 * self.raycast_distance[index]:
+                    kdtree_obstructed_insert(self.world_space_co[index], insert_id)
+                else:
+                    kdtree_insert(self.world_space_co[index], insert_id)
+                # If the ray-cast hit, check how far the hit is to the point,
+                # if it is close enough it is treated as non-obstructed.
+                # self.obstructed.append((hit_location - Vector(self.world_space_co[index])).length >= 0.001 * Vector(self.raycast_distance[index]))
+                # self.obstructed.append(np.linalg.norm(np.array(hit[1])-self.world_space_co[index]) >= 0.001 * self.raycast_distance[index])
+                # self.obstructed.append(True)
+                # print(f"distance={distance} - Obstructed: {np.linalg.norm(np.array(hit_location)-self.world_space_co[index]) >= 0.001 * self.raycast_distance}")
+            # result_points.append((self.screen_space_co[index], self.obstructed[index]))
+        self.processed_point_count = end_index+1
+        if self.processed_point_count == self.count:
+            self.completed = True
+        # print(f"self.processed_point_count:{self.processed_point_count} - point_count:={self.count} - actual count:{end_index-start_index} - target count:{len(self.world_space_co[start_index:end_index + 1])}")
+        return self.world_space_co[start_index:end_index + 1], self.screen_space_co[start_index:end_index + 1], np.full(end_index-start_index+1, self.object_id)
+        # return end_index - start_index + 1
 
 
 class SnapData:
@@ -88,14 +184,23 @@ class SnapData:
         self.region_2d = []
         self.object_id = []
         self.verts_data = {}
+        self.objects_point_data = {}
         self.origins_map = {}
         self.snap_origins = quicksnap_utils.get_addon_settings().snap_objects_origin
         self.object_mode = context.active_object.mode == 'OBJECT'
 
-        # Initialize kdtrees with correct size
+        # Initialize kdtrees-target points nparray with correct size
         max_vertex_count = self.get_max_vertex_count(context, selected_meshes, scene_meshes)
         self.kd = mathutils.kdtree.KDTree(max_vertex_count)
         self.kd_obstructed = mathutils.kdtree.KDTree(max_vertex_count)
+        print(f"max vertex count={max_vertex_count}")
+        self.kd_np = mathutils.kdtree.KDTree(max_vertex_count)
+        self.kd_obstructed_np = mathutils.kdtree.KDTree(max_vertex_count)
+        self.world_space_np = np.empty((max_vertex_count, 3), dtype=np.float64)
+        self.region_2d_np = np.empty((max_vertex_count, 2), dtype=np.float64)
+        self.object_id_np = np.empty((max_vertex_count), dtype=np.int32)
+        self.added_points_np = 0
+
         if not self.is_origin_snapdata:
             # If this snapdata contain target points, it can snap on scene and selection objects.
             self.scene_meshes = scene_meshes.copy()
@@ -125,7 +230,8 @@ class SnapData:
             # Add meshes that do not have polygons. (cannot be found via ray-cast)
             for object_name in scene_meshes:
                 obj = bpy.data.objects[object_name]
-                if obj.type == 'CURVE' or (len(obj.data.vertices) > 0 and len(obj.data.polygons) == 0):
+                if object_name not in selected_meshes and (
+                        obj.type == 'CURVE' or (len(obj.data.vertices) > 0 and len(obj.data.polygons) == 0)):
                     self.add_mesh_target(context, object_name, depsgraph=depsgraph)
 
         # Add all objects for the snap origin (selected objects only).
@@ -159,9 +265,21 @@ class SnapData:
             # Add object in the list if it is not already
             else:
                 obj = bpy.data.objects[object_name]
+                self.objects_point_data[object_name] = ObjectPointData(obj,
+                                                                       self.scene_meshes.index(object_name),
+                                                                       self.perspective_matrix,
+                                                                       width=self.width,
+                                                                       height=self.height,
+                                                                       width_half=self.width_half,
+                                                                       height_half=self.height_half,
+                                                                       view_location=self.view_location,
+                                                                       check_select=True,
+                                                                       filter_selected=False)
+                print(f"Adding to target verts data selected:{object_name}")
                 if obj.type == 'MESH':
                     self.verts_data[object_name] = [(vert.index, vert.co.copy(), vert.select, 0, 0) for vert in
                                                     obj.data.vertices]
+
                 elif obj.type == 'CURVE':
                     self.verts_data[object_name] = quicksnap_utils.flatten([[(index, point.co.copy(),
                                                                               point.select_control_point, spline_index,
@@ -188,6 +306,15 @@ class SnapData:
             else:
                 logger.info(f"Addmesh:{object_name} -  FIRST ADD Scene")
                 obj = bpy.data.objects[object_name].evaluated_get(depsgraph)
+                self.objects_point_data[object_name] = ObjectPointData(obj,
+                                                                       self.scene_meshes.index(object_name),
+                                                                       self.perspective_matrix,
+                                                                       width=self.width,
+                                                                       height=self.height,
+                                                                       width_half=self.width_half,
+                                                                       height_half=self.height_half,
+                                                                       view_location=self.view_location)
+                print(f"Adding to target verts data scene:{object_name}")
                 if obj.type == 'MESH':
                     self.verts_data[object_name] = [(vert.index, vert.co.copy(), vert.select, 0, 0) for vert in
                                                     obj.data.vertices]
@@ -266,6 +393,17 @@ class SnapData:
         """
         obj = bpy.data.objects[object_name]
         current_mode = quicksnap_utils.set_object_mode_if_needed()
+        self.objects_point_data[object_name] = ObjectPointData(obj,
+                                                               self.scene_meshes.index(object_name),
+                                                               self.perspective_matrix,
+                                                               width=self.width,
+                                                               height=self.height,
+                                                               width_half=self.width_half,
+                                                               height_half=self.height_half,
+                                                               view_location=self.view_location,
+                                                               check_select=not self.object_mode,
+                                                               filter_selected=True)
+        print(f"Adding to source verts data:{object_name}")
         if obj.type == 'MESH':
             self.verts_data[object_name] = [(vert.index, vert.co.copy(), vert.select, 0, 0) for vert in
                                             obj.data.vertices]
@@ -313,10 +451,14 @@ class SnapData:
         point_to_cam_vector = self.view_location - ws
         direction_to_point = (ws - self.view_location).normalized()
         distance_point_to_cam = point_to_cam_vector.length
-        (hit, location, _, _, _, _) = bpy.context.scene.ray_cast(context.evaluated_depsgraph_get(),
-                                                                 origin=self.view_location,
-                                                                 direction=direction_to_point,
-                                                                 distance=distance_point_to_cam)
+        # print(f"Raycast - direction={direction_to_point}  - distance={distance_point_to_cam}")
+        # (hit, location, _, _, _, _) = bpy.context.scene.ray_cast(context.evaluated_depsgraph_get(),
+        #                                                          origin=self.view_location,
+        #                                                          direction=direction_to_point,
+        #                                                          distance=distance_point_to_cam)
+        hit=False
+        self.obstructed.append(False)
+        return True
         if not hit:
             self.obstructed.append(False)
         else:
@@ -326,7 +468,7 @@ class SnapData:
         return True
 
     def process_mesh_batch(self, context, object_name, is_selected, world_space_matrix, start_point_index,
-                           object_points_count, batch_size=100):
+                           object_points_count, batch_size=1000):
         """
         Process vertices/points that have been stored in the verts_data dictionary.
         This function process verts from {start_point_index} for a maximum of {batch_size} elements,
@@ -374,6 +516,30 @@ class SnapData:
         # logger.debug(f"====END==== process_mesh_batch from {start_vertex_index} to {end_vertex_index} --End len(self.region_2d):{len(self.region_2d)}")
         return end_vertex_index
 
+    def process_mesh_batch_v2(self, context, object_name, kdtree_insert, kdtree_obstructed_insert, batch_size=1000):
+
+        object_points_data = self.objects_point_data[object_name]
+        end_vertex_index = min(object_points_data.processed_point_count + batch_size, object_points_data.count - 1)
+        points = object_points_data.get_points_data(context, self.view_location,kdtree_insert, kdtree_obstructed_insert,self.added_points_np, batch_size)
+        points_count=len(points[0])
+        # print(f"already added points:{self.added_points_np}")
+        # print(f"max point count:{len(self.world_space_np)}")
+        # print(f"Added POINTS count:{points_count}")
+        # print(f"Added object id count:{len(points_data[2])}")
+        end_id = self.added_points_np+points_count
+        # print(f"end_id:{end_id}")
+        # self.world_space_np[self.added_points_np:end_id] = points_data[0]
+        # self.region_2d_np[self.added_points_np:end_id] = points_data[1]
+        # self.object_id_np[self.added_points_np:end_id] = points_data[2]
+        self.added_points_np = end_id
+        # for point in points_data[3]:
+        #     if point[1]:
+        #         print("add point to obstructed")
+        #     else:
+        #         print("add point to visible")
+        # print(f"Finished? {object_points_data.count == object_points_data.processed_point_count}")
+        return object_points_data.completed
+
     def balance_tree(self, start_index=None):
         """
         Adds stored points from start_index to the last added points into the kdtrees, then balance the trees
@@ -393,7 +559,7 @@ class SnapData:
         self.kd.balance()
         self.kd_obstructed.balance()
 
-    def process_iteration(self, context, max_run_duration=0.003):
+    def process_iteration(self, context, max_run_duration=50):
         """
         To be called every frame. Process verts/points per batch until the function has run for {max_run_duration}
         """
@@ -403,19 +569,32 @@ class SnapData:
         elapsed_time = 0
         current_tree_index = len(self.region_2d)
         # Process selected objects first
+        kdtree_insert = self.kd_np.insert
+        kdtree_obstructed_insert = self.kd_obstructed_np.insert
         if (self.is_origin_snapdata or not self.object_mode) and len(self.to_process_selected) > 0:
-            # logger.debug(f"Process selection - source={self.is_source}")
+            logger.debug(f"Process selection - is_origin_snapdata={self.is_origin_snapdata}")
             for object_name in self.to_process_selected.copy():
                 obj = bpy.data.objects[object_name]
                 world_space_matrix = obj.matrix_world
                 vertex_count = len(self.verts_data[object_name])
                 current_vertex_index = self.to_process_vcount[object_name]
                 # logger.debug(f"process_iteration selected: {object_name} - Current vertex index:{current_vertex_index} - vertex count:{vertex_count}")
+                start_time_batch = time.perf_counter()
+                counter = 0
+                while not self.objects_point_data[object_name].completed:
+                    self.process_mesh_batch_v2(context, object_name, kdtree_insert, kdtree_obstructed_insert)
+                    counter += 1
+                self.kd_np.balance()
+                self.kd_obstructed_np.balance()
+                print(f'batch process time v2={"{:10.4f}".format(time.perf_counter() - start_time_batch)} - Loop={counter}')
+                start_time_batch = time.perf_counter()
+                counter = 0
                 while current_vertex_index < vertex_count - 1:
                     current_vertex_index = self.process_mesh_batch(context, object_name, True, world_space_matrix,
                                                                    current_vertex_index, vertex_count)
+                    counter += 1
                     if current_vertex_index >= vertex_count - 1:
-                        # logger.debug(f"process_iteration selected:{object_name} - ALL VERTS ADDED - Current={current_vertex_index}")  
+                        print(f"process_iteration selected:{object_name} - ALL VERTS ADDED - Current={current_vertex_index}")
                         del self.verts_data[object_name]
                         self.to_process_selected.remove(object_name)
                         del self.to_process_vcount[object_name]
@@ -428,6 +607,7 @@ class SnapData:
                         self.to_process_vcount[object_name] = current_vertex_index + 1
                         self.balance_tree(current_tree_index)
                         return True
+                print(f'batch process time ={"{:10.4f}".format(time.perf_counter()-start_time_batch)} - Loop={counter}')
                 if elapsed_time > max_run_duration:
                     self.balance_tree(current_tree_index)
                     return True
@@ -443,22 +623,29 @@ class SnapData:
 
         # Process scene objects
         if len(self.to_process_scene) > 0:
-            # logger.debug(f"Process Scene - source={self.is_source}")
+            logger.debug(f"Process Scene - is_origin_snapdata={self.is_origin_snapdata}")
             # logger.debug(f"Process iteration. To_Process={self.to_process_scene}")
             for selected_object in self.meshes_selection:
                 bpy.data.objects[selected_object].hide_set(True)
             for object_name in self.to_process_scene.copy():
                 obj = bpy.data.objects[object_name]
                 world_space_matrix = obj.matrix_world
+                print(f"process_mesh_batch - object:{object_name} - has verts_data:{object_name in self.verts_data}")
+                if object_name not in self.verts_data:
+                    continue
                 vertex_count = len(self.verts_data[object_name])
                 current_vertex_index = self.to_process_vcount[object_name]
                 # logger.debug(f"process_iteration unselected: {object_name} - Current vertex index:{current_vertex_index} - vertex count:{vertex_count}")
-
+                start_time_batch = time.perf_counter()
+                while not self.objects_point_data[object_name].completed:
+                    self.process_mesh_batch_v2(context, object_name, kdtree_insert, kdtree_obstructed_insert)
+                print(f'batch process time v2={"{:10.4f}".format(time.perf_counter() - start_time_batch)}')
+                start_time_batch = time.perf_counter()
                 while current_vertex_index < vertex_count - 1:
                     current_vertex_index = self.process_mesh_batch(context, object_name, False, world_space_matrix,
                                                                    current_vertex_index, vertex_count)
                     if current_vertex_index >= vertex_count - 1:
-                        # logger.debug(f"process_iteration unselected:{object_name} - ALL VERTS ADDED - Current={current_vertex_index} - total kdtree verts={len(self.world_space)}")                       
+                        # logger.debug(f"process_iteration unselected:{object_name} - ALL VERTS ADDED - Current={current_vertex_index} - total kdtree verts={len(self.world_space)}")
                         del self.verts_data[object_name]
                         self.to_process_scene.remove(object_name)
                         del self.to_process_vcount[object_name]
@@ -473,6 +660,7 @@ class SnapData:
                         self.to_process_vcount[object_name] = current_vertex_index + 1
                         self.balance_tree(current_tree_index)
                         return True
+                print(f'batch process time ={"{:10.4f}".format(time.perf_counter()-start_time_batch)}')
                 # logger.debug(f"All vertex done, there is time left")
                 if elapsed_time > max_run_duration:
                     for selected_object in self.meshes_selection:
@@ -570,35 +758,6 @@ class SnapData:
         # logger.debug(f"Max vertex count: {max_vertex_count} - source={self.is_source}")
         return max_vertex_count
 
-    def get_object_point_data(self, obj, coords_data):
-        matrix_world = obj.matrix_world
-        count = len(coords_data)
-        shape = (count, 3)
-
-        # Copy verts co points
-        verts_objectspace = np.empty(count * 3, dtype=np.float64)
-        coords_data.foreach_get('co', verts_objectspace)
-        verts_objectspace.shape = shape
-
-        # Copy verts co points
-        verts_worldspace = np.ones(shape=(count, 4), dtype=np.float64)
-        verts_worldspace[:, :-1] = verts_objectspace  # cos v (x,y,z,1) - point,   v(x,y,z,0)- vector
-        verts_worldspace = np.einsum('ij,aj->ai', matrix_world, verts_worldspace)
-
-        verts_viewspace = np.einsum('ij,aj->ai', self.perspective_matrix, verts_worldspace)  # Matrix mult
-        verts_viewspace = verts_viewspace[(verts_viewspace[:, 3] > 0)]  # Filtering behind camera
-
-        verts_2d = np.column_stack((self.width_half+(verts_viewspace[:, 0]/verts_viewspace[:, 3])*self.width_half,
-                                    self.height_half+(verts_viewspace[:, 1]/verts_viewspace[:, 3])*self.height_half))
-        verts_2d = verts_2d[(verts_2d[:, 0] > 0) &
-                            (verts_2d[:, 1] > 0) &
-                            (verts_2d[:, 0] < self.width) &
-                            (verts_2d[:, 1] < self.height)]
-
-        return ObjectPointData(object_id=self.scene_meshes.index(obj.name),
-                               world_space_co=verts_worldspace,
-                               screen_space_co=verts_2d)
-
 
 def print_vector_array(vector_array):
     for index, vector in enumerate(vector_array):
@@ -612,5 +771,3 @@ def print_vector_simple(vector):
     vector_data = [x for x in vector]
     return vector_data
     # print(f"[{vector[0],vector[1],vector[2]}]")
-
-
