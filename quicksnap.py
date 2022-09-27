@@ -79,28 +79,25 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             for obj in selection:
                 self.backup_object_positions[obj.name] = obj.matrix_world.copy()
         else:
-            self.backup_vertices_positions = {}
+            self.backup_curve_points = {}
             self.bmeshs = {}
             for object_name in self.snapdata_source.selected_ids:
                 obj = bpy.data.objects[object_name]
                 if obj.type == "MESH":
                     self.bmeshs[object_name] = bmesh.new()
                     self.bmeshs[object_name].from_mesh(obj.data)
-                    self.backup_vertices_positions[object_name] = [(index, co, 0, 0, 0, 0) for (index, co, _, _) in
-                                                                   self.snapdata_source.selected_ids[object_name]]
+
                 elif obj.type == "CURVE":
-                    self.backup_vertices_positions[object_name] = []
-                    for (index, co, spline_index, bezier) in self.snapdata_source.selected_ids[object_name]:
-                        if bezier == 1:
-                            point = obj.data.splines[spline_index].bezier_points[index]
-                            # logger.info(
-                            #     f"Backup point: {point.co} - handles: {point.handle_left} - {point.handle_right}")
-                            self.backup_vertices_positions[object_name].append((spline_index, index, co.copy(), bezier,
-                                                                                point.handle_left.copy(),
-                                                                                point.handle_right.copy()))
-                        else:
-                            self.backup_vertices_positions[object_name].append(
-                                (spline_index, index, co.copy(), bezier, 0, 0))
+                    self.backup_curve_points[object_name] = quicksnap_utils.flatten([[
+                        (spline_index, index, point.co.copy(), 1, point.handle_left.copy(), point.handle_right.copy())
+                        for index, point in enumerate(spline.bezier_points) if point.select_control_point]
+                        for spline_index, spline in enumerate(obj.data.splines)])
+
+                    self.backup_curve_points[object_name].extend(quicksnap_utils.flatten([[(
+                        spline_index, index, point.co.copy(), 0,0,0)
+                        for index, point in enumerate(spline.points) if point.select]
+                        for spline_index, spline in enumerate(obj.data.splines)]))
+
 
     def set_target_object(self, target_object="", is_root=False, force=True):
         """
@@ -109,22 +106,23 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         """
         if self.target_object == target_object and not force:
             if self.target_object_is_root != is_root:
-                bpy.data.objects[
-                    self.target_object].show_texture_space = is_root or self.target_object_show_texture_space_backup
+                bpy.data.objects[self.target_object].show_bounds = is_root or self.target_object_show_bounds_backup
                 bpy.data.objects[self.target_object].show_name = is_root or self.target_object_show_name_backup
                 self.target_object_is_root = is_root
             return
         if self.target_object != "":
             bpy.data.objects[self.target_object].show_wire = self.target_object_show_wire_backup
-            bpy.data.objects[self.target_object].show_texture_space = self.target_object_show_texture_space_backup
+            bpy.data.objects[self.target_object].show_bounds = self.target_object_show_bounds_backup
+            bpy.data.objects[self.target_object].display_bounds_type = self.target_object_display_bounds_type_backup
             bpy.data.objects[self.target_object].show_name = self.target_object_show_name_backup
         if target_object != "":
             self.target_object_show_wire_backup = bpy.data.objects[target_object].show_wire
             self.target_object_show_name_backup = bpy.data.objects[target_object].show_name
-            self.target_object_show_texture_space_backup = bpy.data.objects[target_object].show_texture_space
+            self.target_object_show_bounds_backup = bpy.data.objects[target_object].show_bounds
+            self.target_object_display_bounds_type_backup = bpy.data.objects[target_object].display_bounds_type
             bpy.data.objects[target_object].show_wire = self.settings.display_target_wireframe
             if is_root:
-                bpy.data.objects[target_object].show_texture_space = True
+                bpy.data.objects[target_object].show_bounds = True
                 bpy.data.objects[target_object].show_name = True
         self.target_object = target_object
         self.target_object_is_root = is_root
@@ -146,20 +144,20 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 return
             # Otherwise, properly revert all vertex/points data.
             object_mode_backup = quicksnap_utils.set_object_mode_if_needed()
-            for object_name in self.backup_vertices_positions:
+            for object_name in self.bmeshs:
                 obj = bpy.data.objects[object_name]
-                if obj.type == "MESH":
-                    self.bmeshs[object_name].to_mesh(bpy.data.objects[object_name].data)
-                elif obj.type == "CURVE" and apply:
-                    data = obj.data
-                    for (curveindex, index, co, bezier, left, right) in self.backup_vertices_positions[object_name]:
-                        if bezier == 1:
-                            data.splines[curveindex].bezier_points[index].co = co
-                            data.splines[curveindex].bezier_points[index].handle_left = left
-                            data.splines[curveindex].bezier_points[index].handle_right = right
-                        else:
-                            data.splines[curveindex].points[index].co = Vector(
-                                (co[0], co[1], co[2], data.splines[curveindex].points[index].co[3]))
+                self.bmeshs[object_name].to_mesh(bpy.data.objects[object_name].data)
+
+            for object_name in self.backup_curve_points:
+                obj = bpy.data.objects[object_name]
+                data = obj.data
+                for (curveindex, index, co, bezier, left, right) in self.backup_curve_points[object_name]:
+                    if bezier == 1:
+                        data.splines[curveindex].bezier_points[index].co = co
+                        data.splines[curveindex].bezier_points[index].handle_left = left
+                        data.splines[curveindex].bezier_points[index].handle_right = right
+                    else:
+                        data.splines[curveindex].points[index].co = co
 
             quicksnap_utils.revert_mode(object_mode_backup)
 
@@ -175,7 +173,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                 self.mouse_position)
         mouse_coord_screen_flat = Vector((self.mouse_position[0], self.mouse_position[1], 0))
 
-        search_obstructed = context.space_data.shading.show_xray or not self.settings.filter_search_obstructed
         depsgraph = context.evaluated_depsgraph_get()
         if self.current_state == State.IDLE:
             # Find object under the mouse
@@ -191,7 +188,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
             # Find source vert/point the closest to the mouse, change cursor crosshair
             closest = self.snapdata_source.find_closest(mouse_coord_screen_flat,
-                                                        search_obstructed=search_obstructed,
                                                         search_origins_only=self.snap_to_origins)
             if closest is not None:
                 (self.closest_source_id, self.distance, target_name, is_root) = closest
@@ -255,8 +251,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     bpy.data.objects[obj].select_set(True)
 
                 # Find the closest target points
-                closest = self.snapdata_target.find_closest(mouse_coord_screen_flat,
-                                                            search_obstructed=search_obstructed)
+                closest = self.snapdata_target.find_closest(mouse_coord_screen_flat)
                 if closest is not None:
                     (self.closest_target_id, self.distance, target_object_name, is_root) = closest
                     self.set_target_object(target_object_name, is_root)
@@ -329,6 +324,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                          context.space_data.region_3d)
 
     def __init__(self):
+        self.backup_curve_points = None
         self.last_translation = None
         self.translate_ops = None
         self._timer = None
@@ -336,7 +332,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self._handle = None
         self.mouse_position = None
         self.bmeshs = None
-        self.backup_vertices_positions = {}
+        self.backup_vertices = {}
         self.backup_object_positions = {}
         self.perspective_matrix_inverse = None
         self.perspective_matrix = None
@@ -347,7 +343,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.snapdata_source = None
         self.snap_to_origins = False
         self.object_mode = None
-        self.target_object_show_texture_space_backup = False
+        self.target_object_show_bounds_backup = False
+        self.target_object_display_bounds_type_backup = False
         self.target_object_show_name_backup = False
         self.target_object_show_wire_backup = False
         self.target_object_is_root = False
@@ -575,8 +572,6 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
     bl_idname = __name_addon__
 
     draw_rubberband: bpy.props.BoolProperty(name="Draw Rubber Band", default=True)
-    filter_search_obstructed: bpy.props.BoolProperty(name="Only snap from/to non visible points when in xRay",
-                                                     default=False)
     snap_objects_origin: bpy.props.EnumProperty(
         name="Snap from/to objects origins",
         items=[
@@ -590,7 +585,6 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         layout = self.layout
         col = layout.column(align=True)
         col.use_property_split = True
-        col.prop(self, "filter_search_obstructed")
         col.prop(self, "snap_objects_origin")
         col.prop(self, "draw_rubberband")
         col.prop(self, "display_target_wireframe")

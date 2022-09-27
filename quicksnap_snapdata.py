@@ -446,7 +446,7 @@ class SnapData:
                 bpy.data.objects[selected_object].select_set(True)
         return False
 
-    def find_closest(self, mouse_coord_screen_flat, search_obstructed=True, search_origins_only=False):
+    def find_closest(self, mouse_coord_screen_flat, search_origins_only=False):
         """
         Returns the closest point to mouse cursor amongst SnapData's points
         returns tuple:
