@@ -31,21 +31,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
     bl_label = "Quick Vertex Snap"
     bl_options = {'INTERNAL', 'UNDO'}
 
-    @staticmethod
-    def get_target_operator(context):
-        wm = context.window_manager
-        op = wm.operators[-1] if wm.operators else None
-        if op:
-            if op.bl_idname == "TRANSFORM_OT_translate":
-                return op
-            #     print(f"OP= {op.bl_idname} - searching for: {type(bpy.ops.transform.translate)}")
-            # if isinstance(op, type(bpy.ops.transform.translate())):
-            else:
-                print(f"{op.bl_idname} != TRANSFORM_OT_translate")
-        return None
-
     def initialize(self, context):
-        logger.info("Initialize")
 
         # Get 'WINDOW' region of the context. Useful when the active context region is UI within the 3DView
         region = None
@@ -84,7 +70,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
     def backup_data(self, context):
         """
-        Backup vertices/curve points positions if in Object mode, otherwise backup object positions.
+        Backup points positions if in Object mode, otherwise backup object positions. used for cancelling operator
         """
         self.backup_object_positions = {}
         if self.object_mode:
@@ -100,20 +86,19 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 if obj.type == "MESH":
                     self.bmeshs[object_name] = bmesh.new()
                     self.bmeshs[object_name].from_mesh(obj.data)
-                    # self.backup_vertices_positions[object_name] = [(index, co, 0, 0, 0, 0) for (index, co, _, _) in
-                    #                                                self.snapdata_source.selected_ids[object_name]]
+                    self.backup_vertices_positions[object_name] = [(index, co, 0, 0, 0, 0) for (index, co, _, _) in
+                                                                   self.snapdata_source.selected_ids[object_name]]
                 elif obj.type == "CURVE":
                     self.backup_vertices_positions[object_name] = []
                     for (index, co, spline_index, bezier) in self.snapdata_source.selected_ids[object_name]:
                         if bezier == 1:
                             point = obj.data.splines[spline_index].bezier_points[index]
-                            logger.info(
-                                f"Backup point: {point.co} - handles: {point.handle_left} - {point.handle_right}")
+                            # logger.info(
+                            #     f"Backup point: {point.co} - handles: {point.handle_left} - {point.handle_right}")
                             self.backup_vertices_positions[object_name].append((spline_index, index, co.copy(), bezier,
                                                                                 point.handle_left.copy(),
                                                                                 point.handle_right.copy()))
                         else:
-                            point = obj.data.splines[spline_index].points[index]
                             self.backup_vertices_positions[object_name].append(
                                 (spline_index, index, co.copy(), bezier, 0, 0))
 
@@ -146,7 +131,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
     def revert_data(self, context, apply=False):
         """
-        Revert the backed up data (vertx/curve points positions if in EDIT mode, objects locations if in OBJECT mode)
+        Revert the backed up data (verts/curve points positions if in EDIT mode, objects locations if in OBJECT mode)
         """
         if self.object_mode:
             for object_name in self.backup_object_positions:
@@ -154,7 +139,10 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         else:
             # If the operation is not cancelled, simply move the selection back.
             if not apply and self.last_translation is not None:
-                bpy.ops.transform.translate(value=self.last_translation * -1, orient_type='GLOBAL')
+                bpy.ops.transform.translate(value=self.last_translation * -1,
+                                            orient_type='GLOBAL',
+                                            snap=False,
+                                            use_automerge_and_split=False)
                 return
             # Otherwise, properly revert all vertex/points data.
             object_mode_backup = quicksnap_utils.set_object_mode_if_needed()
@@ -196,8 +184,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                                  direction=self.mouse_vector)
             # If found, we push this object on top of the stack of objects to process
             if direct_hit and direct_hit_object.name in self.selection_meshes:
-                self.snapdata_source.add_mesh_target(context,
-                                                     direct_hit_object.name,
+                self.snapdata_source.add_object_data(direct_hit_object.name,
                                                      depsgraph=depsgraph,
                                                      is_selected=True,
                                                      set_first_priority=True)
@@ -250,7 +237,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     bpy.data.objects[obj].hide_set(False)
                 # Add the close objects to the to-process list
                 for obj in close_objects:
-                    self.snapdata_target.add_mesh_target(context, obj.name, depsgraph=depsgraph,
+                    self.snapdata_target.add_object_data(obj.name, depsgraph=depsgraph,
                                                          set_first_priority=True)
 
                 # Look for object under the mouse, if found, bring it in top of the list of objects to process.
@@ -258,7 +245,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                                      origin=self.camera_position,
                                                                                      direction=self.mouse_vector)
                 if direct_hit:
-                    self.snapdata_target.add_mesh_target(context, direct_hit_object.name, depsgraph=depsgraph,
+                    self.snapdata_target.add_object_data(direct_hit_object.name, depsgraph=depsgraph,
                                                          set_first_priority=True)
 
                 # Revert hidden objects
@@ -331,40 +318,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                   self.snapping,
                                                                   bpy.data.objects[self.selection_meshes[0]])
 
-            # Translation in a form of matrix operation:
-            translation = mathutils.Matrix.Translation(Vector(self.target) - Vector(origin))
-            # op = QuickVertexSnapOperator.get_target_operator(context)
-            # if op:
-            #     print("op found")
-            #     op.value = (Vector(self.target) - Vector(origin))
-            #     quicksnap_utils.dump(op)
-            #     op()
-            # else:
-            #     print("op not found")
-            # return
             self.last_translation = (Vector(self.target) - Vector(origin))
-            bpy.ops.transform.translate(value=self.last_translation, orient_type='GLOBAL')
-            # Apply the translations to selected objects or to selected verts/points
-            # if self.object_mode:
-            #     for obj_name in self.backup_object_positions:
-            #         quicksnap_utils.translate_object_worldspace(bpy.data.objects[obj_name], translation)
-            # else:
-            #     # logger.info("apply no snapping")
-            #     object_mode_backup = quicksnap_utils.set_object_mode_if_needed()
-            #     for object_name in self.backup_vertices_positions:
-            #         obj = bpy.data.objects[object_name]
-            #         if obj.type == "MESH":
-            #             vertexids = [vert[0] for vert in self.backup_vertices_positions[object_name]]
-            #             quicksnap_utils.translate_vertices_worldspace(obj, self.bmeshs[object_name],
-            #                                                           self.backup_vertices_positions[object_name],
-            #                                                           translation)
-            #         elif obj.type == "CURVE":
-            #             logger.info(f"Apply - backupdata={self.backup_vertices_positions[object_name][0]}")
-            #             quicksnap_utils.translate_curvepoints_worldspace(obj,
-            #                                                              self.backup_vertices_positions[
-            #                                                                  object_name],
-            #                                                              translation)
-            #     quicksnap_utils.revert_mode(object_mode_backup)
+            bpy.ops.transform.translate(value=self.last_translation,
+                                        orient_type='GLOBAL',
+                                        snap=False,
+                                        use_automerge_and_split=False)
 
             # Get the 2D position of the target for ui rendering
             self.target2d = quicksnap_utils.transform_worldspace_coord2d(self.target, region,
@@ -406,7 +364,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.settings = get_addon_settings()
         self.snapping_local = False
         self.snapping = ""
-        logger.info("Start")
 
     def __del__(self):
         pass
@@ -437,7 +394,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         snapdata_updated = False
         if self.current_state == State.IDLE:
             snapdata_updated = snapdata_updated or self.snapdata_source.process_iteration(context)
-            if self.snapdata_source.iteration_finished:
+            if not self.snapdata_source.keep_processing:  # if all source are processed, start processing target points
                 snapdata_updated = snapdata_updated or self.snapdata_target.process_iteration(context)
         else:
             snapdata_updated = snapdata_updated or self.snapdata_target.process_iteration(context)
@@ -585,7 +542,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 f"QuickSnap: Move the mouse over the target vertex/point. {snapping_msg}{axis_msg}")
 
     def invoke(self, context, event):
-        logger.info("invoke")
         if context.area is None:
             return {'CANCELLED'}
         if context.area.type != 'VIEW_3D':
