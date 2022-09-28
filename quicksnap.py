@@ -100,10 +100,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                         for spline_index, spline in enumerate(obj.data.splines)]))
 
     def store_object_display(self, object_name):
-        self.target_object_display_backup[object_name] = (bpy.data.objects[object_name].show_wire,
-                                                          bpy.data.objects[object_name].show_name,
-                                                          bpy.data.objects[object_name].show_bounds,
-                                                          bpy.data.objects[object_name].display_bounds_type)
+        if object_name not in self.target_object_display_backup:
+            self.target_object_display_backup[object_name] = (bpy.data.objects[object_name].show_wire,
+                                                              bpy.data.objects[object_name].show_name,
+                                                              bpy.data.objects[object_name].show_bounds,
+                                                              bpy.data.objects[object_name].display_bounds_type)
 
     def revert_object_display(self, object_name):
         (bpy.data.objects[object_name].show_wire,
@@ -116,44 +117,32 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         Defines the target object.
         Enables wireframe/bounds/display name on the target object and disable all that on the previous target object
         """
-        if self.target_object == target_object and not force:
-            if self.target_object_is_root != is_root:
-                bpy.data.objects[self.target_object].show_bounds = \
-                    is_root or self.target_object_display_backup[self.target_object][2]
-                bpy.data.objects[self.target_object].show_name = \
-                    is_root or self.target_object_display_backup[self.target_object][1]
-                self.target_object_is_root = is_root
-            return
         if self.target_object != "":
             self.revert_object_display(self.target_object)
-            if self.target_object == self.hover_object:
-                bpy.data.objects[self.hover_object].show_wire = True
-        if target_object != "":
-            if target_object not in self.target_object_display_backup:
-                self.store_object_display(target_object)
+        if self.hover_object != "" and self.settings.display_hover_wireframe:
+            self.revert_object_display(self.hover_object)
 
-            bpy.data.objects[target_object].show_wire = self.settings.display_target_wireframe
+        if target_object != "":
+            self.store_object_display(target_object)
+
+            bpy.data.objects[target_object].show_wire = self.settings.display_target_wireframe or \
+                                                        self.target_object_display_backup[target_object][0]
             if is_root:
                 bpy.data.objects[target_object].show_bounds = True
                 bpy.data.objects[target_object].show_name = True
 
         self.target_object = target_object
         self.target_object_is_root = is_root
-        self.closest_vertexid = mesh_vertid
 
 
         if self.settings.display_hover_wireframe:
             if hover_object != "":
-                if hover_object not in self.target_object_display_backup:
-                    self.store_object_display(hover_object)
-                if self.hover_object != "":
-                    if self.hover_object != self.target_object or not self.settings.display_target_wireframe:
-                        bpy.data.objects[self.hover_object].show_wire = \
-                            self.target_object_display_backup[self.hover_object][0]
-                if bpy.data.objects[hover_object].show_wire is False:
-                    bpy.data.objects[hover_object].show_wire = True
+                print(f"set hover object: {hover_object}")
+                self.store_object_display(hover_object)
+                bpy.data.objects[hover_object].show_wire = True
 
             self.hover_object = hover_object
+        self.closest_vertexid = mesh_vertid
 
 
     def revert_data(self, context, apply=False):
@@ -232,7 +221,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             else:
                 self.closest_source_id = -1
                 self.closest_vertexid = -1
-                self.set_object_display("")
+                self.set_object_display("", hover_object)
                 self.distance = -1
                 self.closest_actionable = False
                 bpy.context.window.cursor_set("CROSSHAIR")
@@ -248,7 +237,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     self.closest_vertexid = -1
                     self.closest_target_id = -1
                     self.distance = -1
-                    self.set_object_display("")
+                    self.set_object_display("", hover_object)
 
             else:  # Snapping to all verts/points
 
@@ -293,7 +282,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     self.closest_vertexid = -1
                     self.closest_target_id = -1
                     self.distance = -1
-                    self.set_object_display("")
+                    self.set_object_display("", hover_object)
 
     def check_close_objects(self, context, region, depsgraph):
         """
@@ -445,7 +434,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         elif event.type == 'LEFTMOUSE':  # Confirm
             if self.current_state == State.IDLE and self.closest_source_id >= 0 and self.closest_actionable:
                 self.current_state = State.SOURCE_PICKED
-                self.set_object_display("")
+                self.set_object_display("", "")
                 self.update_header(context)
             else:
                 self.terminate(context)
@@ -537,7 +526,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         if revert:
             self.revert_data(context, apply=True)
 
-        self.set_object_display("")
+        self.set_object_display("","")
         context.area.header_text_set(None)
         context.window.cursor_set("DEFAULT")
         bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
