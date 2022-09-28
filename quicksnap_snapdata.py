@@ -85,6 +85,7 @@ class ObjectPointData:
                     points_object_space = points_object_space[~selected_mask]
 
         # Get WorldSpace
+        self.indices = np.arange(len(points_object_space))
         world_space_co = np.ones(shape=(len(points_object_space), 4), dtype=np.float64)
         world_space_co[:, :-1] = points_object_space  # cos v (x,y,z,1) - point,   v(x,y,z,0)- vector
         world_space_co = np.einsum('ij,aj->ai', matrix_world, world_space_co)
@@ -95,6 +96,7 @@ class ObjectPointData:
         filter_behind_camera = (verts_viewspace[:, 3] > 0)
         verts_viewspace = verts_viewspace[filter_behind_camera]  # Filtering behind camera
         self.world_space_co = self.world_space_co[filter_behind_camera]
+        self.indices = self.indices[filter_behind_camera]
 
         # Get 2dScreenSpace
         self.screen_space_co = np.column_stack(
@@ -105,6 +107,7 @@ class ObjectPointData:
                 self.screen_space_co[:, 0] < width) & (self.screen_space_co[:, 1] < height)
         self.screen_space_co = self.screen_space_co[filter_outside_viewport]
         self.world_space_co = self.world_space_co[filter_outside_viewport]
+        self.indices = self.indices[filter_outside_viewport]
         self.count = len(self.screen_space_co)
 
         # Misc
@@ -145,6 +148,7 @@ class SnapData:
         self.world_space = np.empty((max_vertex_count, 3), dtype=np.float64)
         self.region_2d = np.empty((max_vertex_count, 3), dtype=np.float64)
         self.depth = np.empty(max_vertex_count, dtype=np.float64)
+        self.indices = np.empty(max_vertex_count, dtype=int)
         self.object_id = np.empty(max_vertex_count, dtype=int)
         self.added_points_np = 0
 
@@ -325,6 +329,7 @@ class SnapData:
         # logger.debug(f"inserting point in tree at index: {current_index}")
         self.world_space[current_index] = ws
         self.region_2d[current_index] = (coord_2d[0], coord_2d[1], view_space_projection.w*0.00000001)
+        self.indices[current_index] = -1
         self.object_id[current_index] = object_index
         self.kd.insert(self.region_2d[current_index], current_index)
         self.added_points_np += 1
@@ -354,6 +359,7 @@ class SnapData:
         self.region_2d[start_insert:end_insert, 2] = points_data.screen_space_co[start_index:end_index, 2]*0.00000001
         self.depth[start_insert:end_insert] = points_data.screen_space_co[start_index:end_index, 2]
         self.object_id[start_insert:end_insert] = np.full(insert_count, points_data.object_id, dtype=int)
+        self.indices[start_insert:end_insert] = points_data.indices[start_index:end_index]
 
         # Update count of processed points and check if we are done with the current object.
         self.added_points_np += insert_count
@@ -464,7 +470,7 @@ class SnapData:
                 if dist > 40:
                     break
                 origin = self.world_space[index]
-                close_points.append((origin, index, dist, dist))
+                close_points.append((origin, index, dist, dist, -1))
                 break
 
         else:
@@ -472,7 +478,7 @@ class SnapData:
             search_distance = 20  # Radius in pixels around the mouse position
             points_found = self.kd.find_range(mouse_coord_screen_flat, search_distance)
             if len(points_found) > 0:
-                points_array = np.array(points_found)
+                points_array = np.array(points_found, dtype=object)
 
                 # normalize distance
                 dist = points_array[:, 2]/search_distance
@@ -490,20 +496,22 @@ class SnapData:
                 best_match_i = np.argmin(score)  # index of best score within the points found.
                 match_index = points_found[best_match_i][1]  # index of best score within all points arrays
                 origin = self.world_space[match_index]
-                close_points.append((origin, match_index, points_found[best_match_i][2], points_found[best_match_i][2]))
+                mesh_index = self.indices[match_index]
+                close_points.append((origin, match_index, points_found[best_match_i][2], points_found[best_match_i][2],
+                                     mesh_index))
 
         # sort possible closest points if more than one point
         if len(close_points) == 1:
             # logger.debug(f"Closest id: {close_points[0][1]} - is origin: {close_points[0][1] in self.origins_map}")
             closest_point_data = (
                 close_points[0][1], close_points[0][3], self.scene_meshes[self.object_id[close_points[0][1]]],
-                close_points[0][1] in self.origins_map)
+                close_points[0][1] in self.origins_map, close_points[0][4])
         elif len(close_points) > 1:
             # If multiple points, sort by distance to mouse
             closest = sorted(close_points, key=lambda point: point[2])[0]
             # logger.debug(f"Closest id: {close_points[0][1]} - is origin: {close_points[0][1] in self.origins_map}")
             closest_point_data = (closest[1], closest[3], self.scene_meshes[self.object_id[close_points[0][1]]],
-                                  closest[0][1] in self.origins_map)
+                                  closest[0][1] in self.origins_map, close_points[0][4])
         return closest_point_data
 
     def get_max_vertex_count(self, context, selected_meshes, scene_meshes):

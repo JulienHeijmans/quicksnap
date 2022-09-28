@@ -12,7 +12,7 @@ bl_info = {
 }
 
 
-modulesNames = ['quicksnap_utils', 'quicksnap_snapdata', 'quicksnap']
+modulesNames = ['quicksnap_utils', 'quicksnap_snapdata', 'quicksnap_render', 'quicksnap']
 
 modulesFullNames = {}
 for currentModuleName in modulesNames:

@@ -62,7 +62,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                 self.mouse_position)
         self.perspective_matrix = context.space_data.region_3d.perspective_matrix
         self.perspective_matrix_inverse = self.perspective_matrix.inverted()
-
+        self.edge_links = {}
+        self.target_object_display_backup = {}
         self.backup_data(context)
         self.update(context, region)
         context.area.header_text_set(f"QuickSnap: Pick a vertex/point from the selection to start move-snapping")
@@ -94,38 +95,66 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                         for spline_index, spline in enumerate(obj.data.splines)])
 
                     self.backup_curve_points[object_name].extend(quicksnap_utils.flatten([[(
-                        spline_index, index, point.co.copy(), 0,0,0)
+                        spline_index, index, point.co.copy(), 0, 0, 0)
                         for index, point in enumerate(spline.points) if point.select]
                         for spline_index, spline in enumerate(obj.data.splines)]))
 
+    def store_object_display(self, object_name):
+        self.target_object_display_backup[object_name] = (bpy.data.objects[object_name].show_wire,
+                                                          bpy.data.objects[object_name].show_name,
+                                                          bpy.data.objects[object_name].show_bounds,
+                                                          bpy.data.objects[object_name].display_bounds_type)
 
-    def set_target_object(self, target_object="", is_root=False, force=True):
+    def revert_object_display(self, object_name):
+        (bpy.data.objects[object_name].show_wire,
+         bpy.data.objects[object_name].show_name,
+         bpy.data.objects[object_name].show_bounds,
+         bpy.data.objects[object_name].display_bounds_type) = self.target_object_display_backup[object_name]
+
+    def set_object_display(self, target_object="", hover_object="", is_root=False, mesh_vertid=-1, force=True):
         """
         Defines the target object.
         Enables wireframe/bounds/display name on the target object and disable all that on the previous target object
         """
         if self.target_object == target_object and not force:
             if self.target_object_is_root != is_root:
-                bpy.data.objects[self.target_object].show_bounds = is_root or self.target_object_show_bounds_backup
-                bpy.data.objects[self.target_object].show_name = is_root or self.target_object_show_name_backup
+                bpy.data.objects[self.target_object].show_bounds = \
+                    is_root or self.target_object_display_backup[self.target_object][2]
+                bpy.data.objects[self.target_object].show_name = \
+                    is_root or self.target_object_display_backup[self.target_object][1]
                 self.target_object_is_root = is_root
             return
         if self.target_object != "":
-            bpy.data.objects[self.target_object].show_wire = self.target_object_show_wire_backup
-            bpy.data.objects[self.target_object].show_bounds = self.target_object_show_bounds_backup
-            bpy.data.objects[self.target_object].display_bounds_type = self.target_object_display_bounds_type_backup
-            bpy.data.objects[self.target_object].show_name = self.target_object_show_name_backup
+            self.revert_object_display(self.target_object)
+            if self.target_object == self.hover_object:
+                bpy.data.objects[self.hover_object].show_wire = True
         if target_object != "":
-            self.target_object_show_wire_backup = bpy.data.objects[target_object].show_wire
-            self.target_object_show_name_backup = bpy.data.objects[target_object].show_name
-            self.target_object_show_bounds_backup = bpy.data.objects[target_object].show_bounds
-            self.target_object_display_bounds_type_backup = bpy.data.objects[target_object].display_bounds_type
+            if target_object not in self.target_object_display_backup:
+                self.store_object_display(target_object)
+
             bpy.data.objects[target_object].show_wire = self.settings.display_target_wireframe
             if is_root:
                 bpy.data.objects[target_object].show_bounds = True
                 bpy.data.objects[target_object].show_name = True
+
         self.target_object = target_object
         self.target_object_is_root = is_root
+        self.closest_vertexid = mesh_vertid
+
+
+        if self.settings.display_hover_wireframe:
+            if hover_object != "":
+                if hover_object not in self.target_object_display_backup:
+                    self.store_object_display(hover_object)
+                if self.hover_object != "":
+                    if self.hover_object != self.target_object or not self.settings.display_target_wireframe:
+                        bpy.data.objects[self.hover_object].show_wire = \
+                            self.target_object_display_backup[self.hover_object][0]
+                if bpy.data.objects[hover_object].show_wire is False:
+                    bpy.data.objects[hover_object].show_wire = True
+
+            self.hover_object = hover_object
+
 
     def revert_data(self, context, apply=False):
         """
@@ -174,6 +203,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         mouse_coord_screen_flat = Vector((self.mouse_position[0], self.mouse_position[1], 0))
 
         depsgraph = context.evaluated_depsgraph_get()
+        hover_object = ""
         if self.current_state == State.IDLE:
             # Find object under the mouse
             (direct_hit, _, _, _, direct_hit_object, _) = context.scene.ray_cast(context.evaluated_depsgraph_get(),
@@ -181,6 +211,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                                  direction=self.mouse_vector)
             # If found, we push this object on top of the stack of objects to process
             if direct_hit and direct_hit_object.name in self.selection_meshes:
+                hover_object = direct_hit_object.name
                 self.snapdata_source.add_object_data(direct_hit_object.name,
                                                      depsgraph=depsgraph,
                                                      is_selected=True,
@@ -190,8 +221,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             closest = self.snapdata_source.find_closest(mouse_coord_screen_flat,
                                                         search_origins_only=self.snap_to_origins)
             if closest is not None:
-                (self.closest_source_id, self.distance, target_name, is_root) = closest
-                self.set_target_object(target_name, is_root)
+                (self.closest_source_id, self.distance, target_name, is_root, mesh_vertid) = closest
+                self.set_object_display(target_name, hover_object, is_root)
                 if self.distance <= 15:
                     self.closest_actionable = True  # Points too far from the mouse are highlighted but can't be moved
                     bpy.context.window.cursor_set("SCROLL_XY")
@@ -200,7 +231,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     bpy.context.window.cursor_set("CROSSHAIR")
             else:
                 self.closest_source_id = -1
-                self.set_target_object("")
+                self.closest_vertexid = -1
+                self.set_object_display("")
                 self.distance = -1
                 self.closest_actionable = False
                 bpy.context.window.cursor_set("CROSSHAIR")
@@ -210,12 +242,13 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             if self.snap_to_origins:
                 closest = self.snapdata_target.find_closest(mouse_coord_screen_flat, search_origins_only=True)
                 if closest is not None:
-                    (self.closest_target_id, self.distance, target_object_name, is_root) = closest
-                    self.set_target_object(target_object_name, is_root)
+                    (self.closest_target_id, self.distance, target_object_name, is_root, mesh_vertid) = closest
+                    self.set_object_display(target_object_name, hover_object, is_root, mesh_vertid=mesh_vertid)
                 else:
+                    self.closest_vertexid = -1
                     self.closest_target_id = -1
                     self.distance = -1
-                    self.set_target_object("")
+                    self.set_object_display("")
 
             else:  # Snapping to all verts/points
 
@@ -241,6 +274,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                                      origin=self.camera_position,
                                                                                      direction=self.mouse_vector)
                 if direct_hit:
+                    hover_object = direct_hit_object.name
                     self.snapdata_target.add_object_data(direct_hit_object.name, depsgraph=depsgraph,
                                                          set_first_priority=True)
 
@@ -253,12 +287,13 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 # Find the closest target points
                 closest = self.snapdata_target.find_closest(mouse_coord_screen_flat)
                 if closest is not None:
-                    (self.closest_target_id, self.distance, target_object_name, is_root) = closest
-                    self.set_target_object(target_object_name, is_root)
+                    (self.closest_target_id, self.distance, target_object_name, is_root, mesh_vertid) = closest
+                    self.set_object_display(target_object_name, hover_object, is_root, mesh_vertid=mesh_vertid)
                 else:
+                    self.closest_vertexid = -1
                     self.closest_target_id = -1
                     self.distance = -1
-                    self.set_target_object("")
+                    self.set_object_display("")
 
     def check_close_objects(self, context, region, depsgraph):
         """
@@ -324,6 +359,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                          context.space_data.region_3d)
 
     def __init__(self):
+        self.hover_object = ""
+        self.edge_links = None
         self.backup_curve_points = None
         self.last_translation = None
         self.translate_ops = None
@@ -343,6 +380,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.snapdata_source = None
         self.snap_to_origins = False
         self.object_mode = None
+        self.target_object_display_backup = None
         self.target_object_show_bounds_backup = False
         self.target_object_display_bounds_type_backup = False
         self.target_object_show_name_backup = False
@@ -356,6 +394,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.closest_actionable = False
         self.closest_target_id = -1
         self.closest_source_id = -1
+        self.closest_vertexid = -1
         self.current_state = State.IDLE
         self.selection_meshes = None
         self.settings = get_addon_settings()
@@ -406,7 +445,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         elif event.type == 'LEFTMOUSE':  # Confirm
             if self.current_state == State.IDLE and self.closest_source_id >= 0 and self.closest_actionable:
                 self.current_state = State.SOURCE_PICKED
-                self.set_target_object("")
+                self.set_object_display("")
                 self.update_header(context)
             else:
                 self.terminate(context)
@@ -487,7 +526,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             self.apply(context, region)
         elif event_type == 'W':
             self.settings.display_target_wireframe = not self.settings.display_target_wireframe
-            self.set_target_object(self.target_object, self.target_object_is_root, force=True)
+            self.set_object_display(self.target_object, self.hover_object, self.target_object_is_root, force=True)
         self.update_header(context)
 
     def terminate(self, context, revert=False):
@@ -498,7 +537,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         if revert:
             self.revert_data(context, apply=True)
 
-        self.set_target_object("")
+        self.set_object_display("")
         context.area.header_text_set(None)
         context.window.cursor_set("DEFAULT")
         bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
@@ -576,10 +615,12 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         name="Snap from/to objects origins",
         items=[
             ("ALWAYS", "Always ON", "", 0),
-            ("KEY", "Only when holding \"O\" key", "", 1)
+            ("KEY", "Only in 'Snap to origins' mode (\"O\" key)", "", 1)
         ],
         default="ALWAYS", )
     display_target_wireframe: bpy.props.BoolProperty(name="Display target object wireframe", default=True)
+    display_hover_wireframe: bpy.props.BoolProperty(name="Display mouseover object wireframe", default=True)
+    highlight_target_vertex_edges: bpy.props.BoolProperty(name="Highlight target vertex edges", default=True)
 
     def draw(self, context=None):
         layout = self.layout
@@ -588,6 +629,8 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         col.prop(self, "snap_objects_origin")
         col.prop(self, "draw_rubberband")
         col.prop(self, "display_target_wireframe")
+        col.prop(self, "display_hover_wireframe")
+        col.prop(self, "highlight_target_vertex_edges")
 
         box_content = layout.box()
         header = box_content.row(align=True)

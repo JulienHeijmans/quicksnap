@@ -2,6 +2,7 @@
 from gpu_extras.batch import batch_for_shader
 from .quicksnap_utils import State
 from mathutils import Vector
+import bmesh
 
 logger = logging.getLogger(__name__)
 
@@ -9,6 +10,7 @@ shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
 square_indices = ((0, 1), (1, 2), (2, 3), (3, 0))
 shader_2d_uniform_color = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
 shader_3d_uniform_color = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
+shader_3d_smooth_color = gpu.shader.from_builtin('3D_SMOOTH_COLOR')
 
 
 def draw_square_2d(position_x, position_y, size, color=(1, 1, 0, 1), line_width=1, point_width=3):
@@ -81,6 +83,30 @@ def draw_line_3d(source, target, color=(1, 1, 0, 1), line_width=1, depth_test=Fa
     shader.bind()
     shader.uniform_float("color", color)
     batch.draw(shader)
+    if line_width != 1:
+        bgl.glLineWidth(1)
+    bgl.glDisable(bgl.GL_BLEND)
+    bgl.glDisable(bgl.GL_LINE_SMOOTH)
+    if depth_test:
+        bgl.glDisable(bgl.GL_DEPTH_TEST)
+
+
+def draw_line_3d_smooth_blend(source, target, color_a=(1, 0, 0, 1), color_b=(0, 1, 0, 1), line_width=1,
+                              depth_test=False):
+    if line_width != 1:
+        bgl.glLineWidth(line_width)
+    bgl.glEnable(bgl.GL_BLEND)
+    bgl.glEnable(bgl.GL_LINE_SMOOTH)
+    if depth_test:
+        bgl.glEnable(bgl.GL_DEPTH_TEST)
+    vertices = (
+        (source[0], source[1], source[2]),
+        (target[0], target[1], target[2]))
+    color_fade = (color_a, color_b)
+
+    batch = batch_for_shader(shader_3d_smooth_color, 'LINES', {"pos": vertices, "color": color_fade})
+    shader_3d_smooth_color.bind()
+    batch.draw(shader_3d_smooth_color)
     if line_width != 1:
         bgl.glLineWidth(1)
     bgl.glDisable(bgl.GL_BLEND)
@@ -169,28 +195,62 @@ def draw_snap_axis(self, context):
         else:
             if 'X' in self.snapping:
                 start = point_position.copy()
-                start.x = start.x + 10 ** 5
+                start[0] = start[0] + 10 ** 5
                 end = point_position.copy()
-                end.x = end.x - 10 ** 5
+                end[0] = end[0] - 10 ** 5
                 draw_line_3d(start, end, (1, 0.5, 0.5, 0.6), 1)
             if 'Y' in self.snapping:
                 start = point_position.copy()
-                start.y = start.y + 10 ** 5
+                start[1] = start[1] + 10 ** 5
                 end = point_position.copy()
-                end.y = end.y - 10 ** 5
+                end[1] = end[1] - 10 ** 5
                 draw_line_3d(start, end, (0.5, 1, 0.5, 0.6), 1)
             if 'Z' in self.snapping:
                 start = point_position.copy()
-                start.z = start.z + 10 ** 5
+                start[2] = start[2] + 10 ** 5
                 end = point_position.copy()
-                end.z = end.z - 10 ** 5
+                end[2] = end[2] - 10 ** 5
                 draw_line_3d(start, end, (0.2, 0.6, 1, 0.6), 1)
 
 
 def draw_callback_3d(self, context):
     draw_snap_axis(self, context)
+
     coords = [self.snapdata_target.world_space[objectid] for objectid in self.snapdata_target.origins_map]
     if self.snap_to_origins:
         draw_points_3d(coords, point_width=5)
     else:
         draw_points_3d(coords, color=(1, 1, 0, 0.5), point_width=3, depth_test=True)
+
+    if self.closest_target_id >= 0 and self.settings.highlight_target_vertex_edges:
+        vert_index = self.snapdata_target.indices[self.closest_target_id]
+        if vert_index < 0:
+            return
+        vert_object = bpy.data.objects[self.target_object]
+        if self.target_object not in self.edge_links:
+            self.edge_links[self.target_object]={}
+        if vert_index not in self.edge_links[self.target_object]:
+            matrix = vert_object.matrix_world
+            vert_bmesh = bmesh.new()  # create an empty BMesh
+            # vert_bmesh.from_mesh(vert_object.data)
+            vert_bmesh.from_object(vert_object, context.evaluated_depsgraph_get())
+            verts = vert_bmesh.verts
+            verts.ensure_lookup_table()
+            vert = vert_bmesh.verts[vert_index]
+            edges = vert.link_edges
+            self.edge_links[self.target_object][vert_index]=[]
+            for edge in edges:
+                if edge.verts[0] == vert:
+                    first_vert = 0
+                    second_vert = 1
+                else:
+                    first_vert = 1
+                    second_vert = 0
+                self.edge_links[self.target_object][vert_index].append((matrix @ edge.verts[first_vert].co,
+                                                                        matrix @ edge.verts[second_vert].co))
+        for edge in self.edge_links[self.target_object][vert_index]:
+            draw_line_3d_smooth_blend(edge[0],
+                                      edge[1],
+                                      color_a=(1, 1, 0, 1),
+                                      color_b=(1, 1, 0, 0),
+                                      line_width=1, depth_test=False)
