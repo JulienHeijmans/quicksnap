@@ -488,7 +488,7 @@ class SnapData:
                 # Depth was multiplied by 10e-8 for depth to not affect kdtree closest search.
                 depth = depth[:, 2]*100000000
                 depth = depth / np.amax(depth)  # Normalized depth
-                weight_depth = 2
+                weight_depth = 3
                 weight_dist = 1
 
                 score = (depth*weight_depth+dist*weight_dist+dist*depth)/(weight_depth+weight_dist)
