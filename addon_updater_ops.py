@@ -74,7 +74,7 @@ except Exception as e:
 # not match and have errors. Must be all lowercase and no spaces! Should also
 # be unique among any other addons that could exist (using this updater code),
 # to avoid clashes in operator registration.
-updater.addon = "addon_updater_quicksnap"
+updater.addon = "quicksnap"
 
 
 # -----------------------------------------------------------------------------
@@ -237,10 +237,10 @@ class AddonUpdaterInstallPopup(bpy.types.Operator):
 
 # User preference check-now operator
 class AddonUpdaterCheckNow(bpy.types.Operator):
-    bl_label = "Check now for " + updater.addon + " update"
+    bl_label = "Check now for " + __name_addon__ + " update"
     bl_idname = updater.addon + ".updater_check_now"
     bl_description = "Check now for an update to the {} addon".format(
-        updater.addon)
+        __name_addon__)
     bl_options = {'REGISTER', 'INTERNAL'}
 
     def execute(self, context):
