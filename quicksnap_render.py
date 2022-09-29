@@ -231,9 +231,13 @@ def draw_callback_3d(self, context):
             self.edge_links[self.target_object]={}
         if vert_index not in self.edge_links[self.target_object]:
             matrix = vert_object.matrix_world
-            vert_bmesh = bmesh.new()  # create an empty BMesh
             # vert_bmesh.from_mesh(vert_object.data)
-            vert_bmesh.from_object(vert_object, context.evaluated_depsgraph_get())
+            if self.target_object in self.selection_meshes:
+                # vert_bmesh.from_mesh(vert_object.data)
+                vert_bmesh = bmesh.from_edit_mesh(vert_object.data)
+            else:
+                vert_bmesh = bmesh.new()  # create an empty BMesh
+                vert_bmesh.from_object(vert_object, context.evaluated_depsgraph_get())
             verts = vert_bmesh.verts
             verts.ensure_lookup_table()
             vert = vert_bmesh.verts[vert_index]

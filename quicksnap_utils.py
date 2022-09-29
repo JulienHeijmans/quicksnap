@@ -27,19 +27,18 @@ def transform_worldspace_coord2d(world_space_coord, region, region3d):
                                        region.width / 2.0, region.height / 2.0)
 
 
-def get_selection_meshes():
-    return [obj for obj in bpy.context.selected_objects if
+def get_selection_meshes(context):
+    return [obj for obj in context.selected_objects if
             obj.visible_get() and (obj.type == 'MESH' or obj.type == 'CURVE')]
 
 
 def get_scene_meshes(exclude_selection=False):
     if exclude_selection:
         objects = [obj.name for obj in bpy.data.objects if
-                   obj not in bpy.context.selected_objects and obj.visible_get() and (
-                               obj.type == 'MESH' or obj.type == 'CURVE')]
+                   obj not in bpy.context.selected_objects and obj.visible_get()]
     else:
         objects = [obj.name for obj in bpy.data.objects if
-                   obj.visible_get() and (obj.type == 'MESH' or obj.type == 'CURVE')]
+                   obj.visible_get()]
     return objects
 
 
@@ -306,3 +305,18 @@ def translate_curvepoints_worldspace(obj, backup_data, translation):
                                                                 target_position[2],
                                                                 0)
     pass
+
+
+def has_points_selected(context, selected_meshes):
+    """
+    Returns the maximum count of visible verts/points/origins in the scene
+    """
+
+    # Gather vert count from scene stats
+    stats_string = context.scene.statistics(context.view_layer)
+    selected_vert_count = int(
+        [val for val in stats_string.split('|') if 'Verts' in val][0].split(':')[1].split('/')[0].replace('.',
+                                                                                            '').replace(',',
+                                                                                                        ''))
+
+    return selected_vert_count > 0

@@ -33,22 +33,28 @@ class QuickVertexSnapOperator(bpy.types.Operator):
     bl_options = {'INTERNAL', 'UNDO'}
 
     def initialize(self, context):
-
+        print("init0")
         # Get 'WINDOW' region of the context. Useful when the active context region is UI within the 3DView
         region = None
         for region_item in context.area.regions:
             if region_item.type == 'WINDOW':
                 region = region_item
 
+        print("init1")
         if not region:
             return False  # If no window region, cancel the operation.
 
         # Get selection, if false cancel operation
-        self.selection_meshes = [obj.name for obj in quicksnap_utils.get_selection_meshes()]
+        self.selection_meshes = [obj.name for obj in quicksnap_utils.get_selection_meshes(context)]
+        print(f"selection meshes: {self.selection_meshes}")
         if not self.selection_meshes or len(self.selection_meshes) == 0:
             return False
 
+        print("init2")
         self.object_mode = bpy.context.active_object.mode == 'OBJECT'
+        if not self.object_mode and not quicksnap_utils.has_points_selected(context,self.selection_meshes):
+            return False
+        print("init3")
 
         # Create SnapData objects that will store all the vertex/point info (World space, view space, and kdtree to
         # search the closest point)
@@ -138,7 +144,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
         if self.settings.display_hover_wireframe:
             if hover_object != "":
-                print(f"set hover object: {hover_object}")
                 self.store_object_display(hover_object)
                 bpy.data.objects[hover_object].show_wire = True
 

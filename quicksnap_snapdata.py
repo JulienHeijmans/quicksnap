@@ -54,13 +54,16 @@ class ObjectPointData:
             points_object_space = np.empty(max_count * 3, dtype=np.float64)
             vertices.foreach_get('co', points_object_space)
             points_object_space.shape = shape
+            self.indices = np.arange(len(points_object_space))
             if check_select:
                 selected_mask = np.empty(max_count, dtype=bool)
                 vertices.foreach_get('select', selected_mask)
                 if filter_selected:
                     points_object_space = points_object_space[selected_mask]
+                    self.indices = self.indices[selected_mask]
                 else:
                     points_object_space = points_object_space[~selected_mask]
+                    self.indices = self.indices[~selected_mask]
 
         if obj.type == 'CURVE':
             all_points = quicksnap_utils.flatten(
@@ -73,6 +76,7 @@ class ObjectPointData:
             # Copy verts co points
             points_object_space = np.array(all_points)
             points_object_space.shape = shape
+            self.indices = np.arange(len(points_object_space))
             if check_select:
                 selected_mask = quicksnap_utils.flatten(
                     [[point.select_control_point for point in spline.bezier_points] for spline in obj.data.splines])
@@ -81,11 +85,13 @@ class ObjectPointData:
                 selected_mask = np.array(selected_mask)
                 if filter_selected:
                     points_object_space = points_object_space[selected_mask]
+                    self.indices = self.indices[selected_mask]
                 else:
                     points_object_space = points_object_space[~selected_mask]
+                    self.indices = self.indices[~selected_mask]
 
         # Get WorldSpace
-        self.indices = np.arange(len(points_object_space))
+
         world_space_co = np.ones(shape=(len(points_object_space), 4), dtype=np.float64)
         world_space_co[:, :-1] = points_object_space  # cos v (x,y,z,1) - point,   v(x,y,z,0)- vector
         world_space_co = np.einsum('ij,aj->ai', matrix_world, world_space_co)
@@ -182,7 +188,7 @@ class SnapData:
             for object_name in scene_meshes:
                 obj = bpy.data.objects[object_name]
                 if object_name not in selected_meshes and (
-                        obj.type == 'CURVE' or (len(obj.data.vertices) > 0 and len(obj.data.polygons) == 0)):
+                        obj.type == 'CURVE' or (obj.type == 'MESH' and len(obj.data.vertices) > 0 and len(obj.data.polygons) == 0)):
                     self.add_object_data(object_name, depsgraph=depsgraph)
 
         # Add all objects for the snap origin (selected objects only).
