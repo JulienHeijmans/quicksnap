@@ -65,7 +65,7 @@ class ObjectPointData:
                     points_object_space = points_object_space[~selected_mask]
                     self.indices = self.indices[~selected_mask]
 
-        if obj.type == 'CURVE':
+        elif obj.type == 'CURVE':
             all_points = quicksnap_utils.flatten(
                 [[point.co for point in spline.bezier_points] for spline in obj.data.splines])
             all_points.extend(quicksnap_utils.flatten([[Vector((point.co[0], point.co[1], point.co[2]))
@@ -89,7 +89,9 @@ class ObjectPointData:
                 else:
                     points_object_space = points_object_space[~selected_mask]
                     self.indices = self.indices[~selected_mask]
-
+        else:
+            self.completed = True
+            return
         # Get WorldSpace
 
         world_space_co = np.ones(shape=(len(points_object_space), 4), dtype=np.float64)
@@ -520,14 +522,14 @@ class SnapData:
                                   closest[0][1] in self.origins_map, close_points[0][4])
         return closest_point_data
 
-    def get_max_vertex_count(self, context, selected_meshes, scene_meshes):
+    def get_max_vertex_count(self, context, selected_objects, scene_objects):
         """
         Returns the maximum count of visible verts/points/origins in the scene
         """
         # logger.debug(f"get_max_vertex_count - source={self.is_source}")
         if self.is_origin_snapdata:
-            max_vertex_count = len(selected_meshes)
-            for obj_name in selected_meshes:
+            max_vertex_count = len(selected_objects)
+            for obj_name in selected_objects:
                 obj = bpy.data.objects[obj_name]
                 if obj.type == 'MESH':
                     max_vertex_count += len(obj.data.vertices)
@@ -535,11 +537,12 @@ class SnapData:
                     max_vertex_count += sum(
                         [(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])
         else:
-            max_vertex_count = len(scene_meshes)+1
+            all_meshes = scene_objects.copy()
+            all_meshes.extend(selected_objects)
+            max_vertex_count = len(all_meshes) + 1  # All objects origins + cursor
             if bpy.context.active_object.mode == 'OBJECT':
                 # Gather vert count from scene stats
                 stats_string = context.scene.statistics(context.view_layer)
-                # logger.debug(f"stats_string: {stats_string} ")
                 max_vertex_count += int(
                     [val for val in stats_string.split('|') if 'Verts' in val][0].split(':')[1].replace('.',
                                                                                                         '').replace(',',
@@ -548,8 +551,6 @@ class SnapData:
                 # Scene stats not available, parse whole scene.
                 # Slow, need to find faster way of getting scene vertex count.
                 depsgraph = context.evaluated_depsgraph_get()
-                all_meshes = scene_meshes.copy()
-                all_meshes.extend(selected_meshes)
                 for obj_name in all_meshes:
                     obj = bpy.data.objects[obj_name]
                     if obj.type == 'MESH':
@@ -557,7 +558,7 @@ class SnapData:
                     elif obj.type == 'CURVE':
                         max_vertex_count += sum(
                             [(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])
-                for obj_name in selected_meshes:
+                for obj_name in selected_objects:
                     obj = bpy.data.objects[obj_name]
                     if obj.type == 'MESH':
                         max_vertex_count += len(obj.data.vertices)

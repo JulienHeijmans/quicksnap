@@ -174,7 +174,7 @@ def draw_snap_axis(self, context):
     if self.closest_source_id >= 0 and self.snapping != "":
         point_position = self.snapdata_source.world_space[self.closest_source_id]
         if self.snapping_local:
-            for object_name in self.selection_meshes:
+            for object_name in self.selection_objects:
                 obj_matrix = bpy.data.objects[object_name].matrix_world
 
                 if 'X' in self.snapping:
@@ -232,7 +232,7 @@ def draw_callback_3d(self, context):
         if vert_index not in self.edge_links[self.target_object]:
             matrix = vert_object.matrix_world
             # vert_bmesh.from_mesh(vert_object.data)
-            if self.target_object in self.selection_meshes:
+            if self.target_object in self.selection_objects:
                 # vert_bmesh.from_mesh(vert_object.data)
                 vert_bmesh = bmesh.from_edit_mesh(vert_object.data)
             else:

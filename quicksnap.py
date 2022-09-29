@@ -33,34 +33,29 @@ class QuickVertexSnapOperator(bpy.types.Operator):
     bl_options = {'INTERNAL', 'UNDO'}
 
     def initialize(self, context):
-        print("init0")
         # Get 'WINDOW' region of the context. Useful when the active context region is UI within the 3DView
         region = None
         for region_item in context.area.regions:
             if region_item.type == 'WINDOW':
                 region = region_item
 
-        print("init1")
         if not region:
             return False  # If no window region, cancel the operation.
 
         # Get selection, if false cancel operation
-        self.selection_meshes = [obj.name for obj in quicksnap_utils.get_selection_meshes(context)]
-        print(f"selection meshes: {self.selection_meshes}")
-        if not self.selection_meshes or len(self.selection_meshes) == 0:
+        self.selection_objects = [obj.name for obj in quicksnap_utils.get_selection_objects(context)]
+        if not self.selection_objects or len(self.selection_objects) == 0:
             return False
 
-        print("init2")
         self.object_mode = bpy.context.active_object.mode == 'OBJECT'
-        if not self.object_mode and not quicksnap_utils.has_points_selected(context,self.selection_meshes):
+        if not self.object_mode and not quicksnap_utils.has_points_selected(context, self.selection_objects):
             return False
-        print("init3")
 
         # Create SnapData objects that will store all the vertex/point info (World space, view space, and kdtree to
         # search the closest point)
-        self.snapdata_source = SnapData(context, region, self.selection_meshes)
-        self.snapdata_target = SnapData(context, region, self.selection_meshes,
-                                        quicksnap_utils.get_scene_meshes(True))
+        self.snapdata_source = SnapData(context, region, self.selection_objects)
+        self.snapdata_target = SnapData(context, region, self.selection_objects,
+                                        quicksnap_utils.get_scene_objects(True))
 
         # Store 3DView camera information.
         region3d = context.space_data.region_3d
@@ -83,7 +78,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.backup_object_positions = {}
         if self.object_mode:
             selection = quicksnap_utils.keep_only_parents(
-                [bpy.data.objects[obj_name] for obj_name in self.selection_meshes])
+                [bpy.data.objects[obj_name] for obj_name in self.selection_objects])
             for obj in selection:
                 self.backup_object_positions[obj.name] = obj.matrix_world.copy()
         else:
@@ -205,7 +200,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                                  origin=self.camera_position,
                                                                                  direction=self.mouse_vector)
             # If found, we push this object on top of the stack of objects to process
-            if direct_hit and direct_hit_object.name in self.selection_meshes:
+            if direct_hit and direct_hit_object.name in self.selection_objects:
                 hover_object = direct_hit_object.name
                 self.snapdata_source.add_object_data(direct_hit_object.name,
                                                      depsgraph=depsgraph,
@@ -248,7 +243,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             else:  # Snapping to all verts/points
 
                 # First hide the selection mesh not to raycast against it.
-                for obj in self.selection_meshes:
+                for obj in self.selection_objects:
                     bpy.data.objects[obj].hide_set(True)
 
                 # Now we will search for other objects to process around the mouse.
@@ -274,9 +269,9 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                          set_first_priority=True)
 
                 # Revert hidden objects
-                for obj in self.selection_meshes:
+                for obj in self.selection_objects:
                     bpy.data.objects[obj].hide_set(False)
-                for obj in self.selection_meshes:  # re-select selection that might be lost in previous steps
+                for obj in self.selection_objects:  # re-select selection that might be lost in previous steps
                     bpy.data.objects[obj].select_set(True)
 
                 # Find the closest target points
@@ -330,7 +325,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                   self.snapdata_target.world_space[
                                                                       self.closest_target_id],
                                                                   self.snapping,
-                                                                  bpy.data.objects[self.selection_meshes[0]])
+                                                                  bpy.data.objects[self.selection_objects[0]])
             # If there is no target, get the target on the place perpendicular to the camera,
             # or closest to constrained axis.
             else:
@@ -341,7 +336,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 else:
                     self.target = quicksnap_utils.get_target_free(origin, self.camera_position, self.mouse_vector,
                                                                   self.snapping,
-                                                                  bpy.data.objects[self.selection_meshes[0]])
+                                                                  bpy.data.objects[self.selection_objects[0]])
 
             self.last_translation = (Vector(self.target) - Vector(origin))
             bpy.ops.transform.translate(value=self.last_translation,
@@ -391,7 +386,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.closest_source_id = -1
         self.closest_vertexid = -1
         self.current_state = State.IDLE
-        self.selection_meshes = None
+        self.selection_objects = None
         self.settings = get_addon_settings()
         self.snapping_local = False
         self.snapping = ""
@@ -409,10 +404,10 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.perspective_matrix = context.space_data.region_3d.perspective_matrix
         self.perspective_matrix_inverse = self.perspective_matrix.inverted()
 
-        self.snapdata_source.__init__(context, region, self.selection_meshes)
+        self.snapdata_source.__init__(context, region, self.selection_objects)
         self.snapdata_target.is_enabled = False
-        self.snapdata_target.__init__(context, region, self.selection_meshes,
-                                      quicksnap_utils.get_scene_meshes(True))
+        self.snapdata_target.__init__(context, region, self.selection_objects,
+                                      quicksnap_utils.get_scene_objects(True))
 
     def modal(self, context, event):
 
@@ -476,7 +471,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             else:
                 new_snapping = 'X'
             if self.snapping == new_snapping:
-                if not self.snapping_local and len(self.selection_meshes) == 1:
+                if not self.snapping_local and len(self.selection_objects) == 1:
                     self.snapping_local = not self.snapping_local
                 else:
                     self.snapping_local = False
@@ -491,7 +486,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             else:
                 new_snapping = 'Y'
             if self.snapping == new_snapping:
-                if not self.snapping_local and len(self.selection_meshes) == 1:
+                if not self.snapping_local and len(self.selection_objects) == 1:
                     self.snapping_local = not self.snapping_local
                 else:
                     self.snapping_local = False
@@ -506,7 +501,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             else:
                 new_snapping = 'Z'
             if self.snapping == new_snapping:
-                if not self.snapping_local and len(self.selection_meshes) == 1:
+                if not self.snapping_local and len(self.selection_objects) == 1:
                     self.snapping_local = not self.snapping_local
                 else:
                     self.snapping_local = False
@@ -532,9 +527,12 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         if revert:
             self.revert_data(context, apply=True)
 
-        self.set_object_display("","")
+        self.set_object_display("", "")
         context.area.header_text_set(None)
-        context.window.cursor_set("DEFAULT")
+        if self.object_mode:
+            bpy.context.window.cursor_set("DEFAULT")
+        else:
+            bpy.context.window.cursor_set("CROSSHAIR")
         bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
         bpy.types.SpaceView3D.draw_handler_remove(self._handle_3d, 'WINDOW')
         self.snapdata_target.is_enabled = False
@@ -543,7 +541,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         # Revert mode and selection
         if self.object_mode:
             bpy.ops.object.mode_set(mode='OBJECT')
-        for selected_object in self.selection_meshes:
+        for selected_object in self.selection_objects:
             bpy.data.objects[selected_object].select_set(True)
 
     def update_mouse_position(self, context, event):
@@ -579,11 +577,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             self.report({'WARNING'}, "View3D not found, cannot run operator")
             return {'CANCELLED'}
 
-        context.window.cursor_set("DEFAULT")
         self.update_mouse_position(context, event)
-
         if not self.initialize(context):
             return {'CANCELLED'}
+
+        context.window.cursor_modal_set("DEFAULT")
 
         args = (self, context)
         self._handle = bpy.types.SpaceView3D.draw_handler_add(quicksnap_render.draw_callback_2d, args, 'WINDOW',

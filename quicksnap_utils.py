@@ -27,12 +27,14 @@ def transform_worldspace_coord2d(world_space_coord, region, region3d):
                                        region.width / 2.0, region.height / 2.0)
 
 
-def get_selection_meshes(context):
-    return [obj for obj in context.selected_objects if
-            obj.visible_get() and (obj.type == 'MESH' or obj.type == 'CURVE')]
+def get_selection_objects(context):
+    if context.mode == 'EDIT_MESH':
+        return [obj for obj in context.objects_in_mode if obj.visible_get()]
+    else:
+        return [obj for obj in context.selected_objects if obj.visible_get()]
 
 
-def get_scene_meshes(exclude_selection=False):
+def get_scene_objects(exclude_selection=False):
     if exclude_selection:
         objects = [obj.name for obj in bpy.data.objects if
                    obj not in bpy.context.selected_objects and obj.visible_get()]

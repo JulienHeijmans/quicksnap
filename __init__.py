@@ -32,16 +32,12 @@ for currentModuleFullName in modulesFullNames.values():
 
 
 def register():
-    print(f"Register - bl_info=")
-    print(bl_info)
-    # addon_updater_ops.register(bl_info)
     for current_module_name in modulesFullNames.values():
         if current_module_name in sys.modules:
             if hasattr(sys.modules[current_module_name], 'register'):
                 if current_module_name == f"QuickSnap.addon_updater_ops":
                     sys.modules[current_module_name].register(bl_info)
                 else:
-                    print(f"module name={current_module_name}")
                     sys.modules[current_module_name].register()
 
 
