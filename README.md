@@ -11,6 +11,7 @@ https://user-images.githubusercontent.com/35562774/193322706-ec02d8a9-0bdf-48a9-
   * Curve Points
   * Object origins
   * Scene cursor
+* Automatically display wireframe of the mesh you are snapping to and the wireframe of the object right under the mouse (Can be turned off)
 * Snap onto visible and non visible points (Points closer to the camera are prioritized)
 * Highlight target vertex edges for better readability
 
