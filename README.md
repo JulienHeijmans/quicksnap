@@ -50,6 +50,8 @@ If performances are poor, hiding objects/collections that you don't want to snap
 I am saying this but the tool should be efficient enough in most cases.
 
 ## Bug Report:
+The add-on has not be battle tested yet, so you will likely encounter bugs in situations that I have not tested yet...
+
 If you encounter a bug, please report it in the Issue section, and I will have a look at it: https://github.com/JulienHeijmans/quicksnap/issues
 Do not forget to explain what you where doing and what was in your scene when the issue happened. If you can share the scene, you can also do so.
 
