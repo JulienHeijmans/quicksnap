@@ -7,7 +7,7 @@ bl_info = {
     "name": "QuickSnap",
     "author": "Julien Heijmans",
     "blender": (2, 80, 0),
-    'version': (1, 0, 0),
+    'version': (1, 1, 0),
     "category": "3D View",
     "description": "Quickly snap objects/vertices/curve points",
     "warning": "",
@@ -35,7 +35,7 @@ def register():
     for current_module_name in modulesFullNames.values():
         if current_module_name in sys.modules:
             if hasattr(sys.modules[current_module_name], 'register'):
-                if current_module_name == f"QuickSnap.addon_updater_ops":
+                if current_module_name == f"{__name__}.addon_updater_ops":
                     sys.modules[current_module_name].register(bl_info)
                 else:
                     sys.modules[current_module_name].register()
