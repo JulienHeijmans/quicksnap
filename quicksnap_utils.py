@@ -322,3 +322,25 @@ def has_points_selected(context, selected_meshes):
                                                                                                         ''))
 
     return selected_vert_count > 0
+
+
+def ignore_modifiers(obj_name, ignore_mirror_modifier=False):
+    obj = bpy.data.objects[obj_name]
+    ignored = []
+    modifiers = obj.modifiers
+    for index, modifier in enumerate(modifiers):
+        print(f"modifier type:{modifier.type} - enabled={modifier.show_viewport}")
+        if not ignore_mirror_modifier and modifier.type == 'MIRROR':
+            continue
+
+        if modifier.show_viewport:
+            modifier.show_viewport = False
+            ignored.append(index)
+    return ignored
+
+
+def revert_modifiers(obj_name, ignored):
+    obj = bpy.data.objects[obj_name]
+    modifiers = obj.modifiers
+    for index in ignored:
+        modifiers[index].show_viewport = True

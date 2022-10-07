@@ -120,12 +120,24 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         Defines the target object.
         Enables wireframe/bounds/display name on the target object and disable all that on the previous target object
         """
+
+        if target_object != self.target_object and self.current_state is State.SOURCE_PICKED:
+            if self.target_object != "":
+                quicksnap_utils.revert_modifiers(self.target_object, self.target_ignored_modifiers)
+                self.target_ignored_modifiers = []
+
+            if target_object != "":
+                if self.settings.ignore_modifiers_target and self.settings.disable_ignored_modifiers:
+                    self.target_ignored_modifiers = quicksnap_utils.ignore_modifiers(target_object,
+                                                                                     self.settings.ignore_mirror_modifier_target)
+
         if self.target_object != "":
             self.revert_object_display(self.target_object)
         if self.hover_object != "" and self.settings.display_hover_wireframe:
             self.revert_object_display(self.hover_object)
 
         if target_object != "":
+
             self.store_object_display(target_object)
 
             bpy.data.objects[target_object].show_wire = self.settings.display_target_wireframe or \
@@ -201,7 +213,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             # If found, we push this object on top of the stack of objects to process
             if direct_hit and direct_hit_object.name in self.selection_objects:
                 hover_object = direct_hit_object.name
-                self.snapdata_source.add_object_data(direct_hit_object.name,
+                self.snapdata_source.add_object_data(context,direct_hit_object.name,
                                                      depsgraph=depsgraph,
                                                      is_selected=True,
                                                      set_first_priority=True)
@@ -255,7 +267,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     bpy.data.objects[obj].hide_set(False)
                 # Add the close objects to the to-process list
                 for obj in close_objects:
-                    self.snapdata_target.add_object_data(obj.name, depsgraph=depsgraph,
+                    self.snapdata_target.add_object_data(context,obj.name, depsgraph=depsgraph,
                                                          set_first_priority=True)
 
                 # Look for object under the mouse, if found, bring it in top of the list of objects to process.
@@ -264,7 +276,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                                      direction=self.mouse_vector)
                 if direct_hit:
                     hover_object = direct_hit_object.name
-                    self.snapdata_target.add_object_data(direct_hit_object.name, depsgraph=depsgraph,
+                    self.snapdata_target.add_object_data(context,direct_hit_object.name, depsgraph=depsgraph,
                                                          set_first_priority=True)
 
                 # Revert hidden objects
@@ -348,6 +360,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                          context.space_data.region_3d)
 
     def __init__(self):
+        self.source_ignored_modifiers = []
+        self.target_ignored_modifiers = []
         self.hover_object = ""
         self.edge_links = None
         self.target_bmeshs = None
@@ -517,11 +531,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         elif event_type == 'W':
             self.settings.display_target_wireframe = not self.settings.display_target_wireframe
             self.set_object_display(self.target_object, self.hover_object, self.target_object_is_root, force=True)
-        elif event_type == 'M':
-            self.settings.ignore_modifiers = not self.settings.ignore_modifiers
-
-            self.refresh_vertex_data(context, region)
-            self.set_object_display(self.target_object, self.hover_object, self.target_object_is_root, force=True)
+        # elif event_type == 'M':
+        #     self.settings.ignore_modifiers = not self.settings.ignore_modifiers
+        #
+        #     self.refresh_vertex_data(context, region)
+        #     self.set_object_display(self.target_object, self.hover_object, self.target_object_is_root, force=True)
         self.update_header(context)
 
     def terminate(self, context, revert=False):
@@ -532,6 +546,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         if revert:
             self.revert_data(context, apply=True)
 
+        self.snapdata_source.revert_modifiers()
         self.set_object_display("", "")
         context.area.header_text_set(None)
         if self.object_mode:
@@ -558,7 +573,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.mouse_position = (event.mouse_x - context.area.x, event.mouse_y - context.area.y)
 
     def update_header(self, context):
-        ignore_modifiers_msg = ""
+        # ignore_modifiers_msg = ""
         axis_msg = ""
         snapping_msg = f"Use (Shift+)X/Y/Z to constraint to the world/local axis or plane. Use O to snap to object " \
                        f"origins. Right Mouse Button/ESC to cancel the operation. "
@@ -575,15 +590,13 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 axis_msg = "(Local)"
             else:
                 axis_msg = "(World)"
-        if self.settings.ignore_modifiers:
-            ignore_modifiers_msg = " [MODIFIERS ARE IGNORED]"
+        # if self.settings.ignore_modifiers:
+        #     ignore_modifiers_msg = " [MODIFIERS ARE IGNORED]"
         if self.current_state == State.IDLE:
-            context.area.header_text_set(f"QuickSnap: Pick the source vertex/point. {snapping_msg}{axis_msg} "
-                                         f"{ignore_modifiers_msg}")
+            context.area.header_text_set(f"QuickSnap: Pick the source vertex/point. {snapping_msg}{axis_msg}")
         elif self.current_state == State.SOURCE_PICKED:
             context.area.header_text_set(
-                f"QuickSnap: Move the mouse over the target vertex/point. {snapping_msg}{axis_msg} "
-                f"{ignore_modifiers_msg}")
+                f"QuickSnap: Move the mouse over the target vertex/point. {snapping_msg}{axis_msg}")
 
     def invoke(self, context, event):
         if context.area is None:
@@ -630,7 +643,11 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
     display_hover_wireframe: bpy.props.BoolProperty(name="Display mouseover object wireframe", default=True)
     highlight_target_vertex_edges: bpy.props.BoolProperty(name="Highlight target vertex edges (Impact performances)",
                                                           default=True)
-    ignore_modifiers: bpy.props.BoolProperty(name="Ignore modifiers (For heavy scenes)", default=False)
+    ignore_modifiers_source: bpy.props.BoolProperty(name="Ignore modifiers on selected objects", default=False)
+    ignore_mirror_modifier_source: bpy.props.BoolProperty(name="Ignore mirror modifiers on selected objects", default=False)
+    ignore_modifiers_target: bpy.props.BoolProperty(name="Ignore modifiers on target objects", default=False)
+    ignore_mirror_modifier_target: bpy.props.BoolProperty(name="Ignore mirror modifiers on target objects", default=False)
+    disable_ignored_modifiers: bpy.props.BoolProperty(name="Hide/Disable ignored modifiers in viewport", default=True)
 
     # addon updater preferences from `__init__`, be sure to copy all of them
     auto_check_update: bpy.props.BoolProperty(
@@ -670,12 +687,23 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         layout = self.layout
         col = layout.column(align=True)
         col.use_property_split = True
+
         col.prop(self, "snap_objects_origin")
         col.prop(self, "draw_rubberband")
         col.prop(self, "display_target_wireframe")
         col.prop(self, "display_hover_wireframe")
         col.prop(self, "highlight_target_vertex_edges")
-        col.prop(self, "ignore_modifiers")
+
+        col.label(text="         Ignored modifiers:")
+        col.prop(self, "ignore_modifiers_source", text="Ignore selected object modifiers*")
+        col.prop(self, "ignore_mirror_modifier_source", text="└  Include MIRROR modifiers*")
+        col.prop(self, "ignore_modifiers_target", text="Ignore target object modifiers")
+        col.prop(self, "ignore_mirror_modifier_target", text="└  Include MIRROR modifiers")
+        col.prop(self, "disable_ignored_modifiers", text="Hide/Disable ignored modifiers in viewport**")
+
+        col.label(text="")
+        col.label(text="* Only used in Object mode. In Edit mode, selected objects modifiers are always ignored.")
+        col.label(text="** Impact performances for heavy modifiers, when the addon enable/disable the modifiers")
 
         box_content = layout.box()
         header = box_content.row(align=True)
@@ -702,7 +730,7 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_Z', "Constraint to Z Plane", shift=True)
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_O', "Snap to objects origins only")
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_W', "Enable/Disable wireframe on target object")
-        quicksnap_utils.insert_ui_hotkey(col, 'EVENT_M', "Enable/Disable 'Ignore Modifiers'")
+        # quicksnap_utils.insert_ui_hotkey(col, 'EVENT_M', "Enable/Disable 'Ignore Modifiers'")
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_ESC', "Cancel Snap")
         quicksnap_utils.insert_ui_hotkey(col, 'MOUSE_RMB', "Cancel Snap")
 

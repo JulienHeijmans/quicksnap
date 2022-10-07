@@ -1,6 +1,8 @@
 ﻿import bpy, gpu, blf, bgl, logging
 from gpu_extras.batch import batch_for_shader
 from .quicksnap_utils import State
+from .quicksnap_utils import ignore_modifiers
+from .quicksnap_utils import revert_modifiers
 from mathutils import Vector
 import bmesh
 
@@ -240,10 +242,10 @@ def draw_callback_3d(self, context):
             else:
                 if self.target_object not in self.target_bmeshs:
                     self.target_bmeshs[self.target_object] = bmesh.new()  # create an empty BMesh
-                    if self.settings.ignore_modifiers:
-                        self.target_bmeshs[self.target_object].from_object(vert_object)
-                    else:
-                        self.target_bmeshs[self.target_object].from_object(vert_object, context.evaluated_depsgraph_get())
+                    # if self.settings.ignore_modifiers_target and self.settings.ignore_mirror_modifier_target:
+                    #     self.target_bmeshs[self.target_object].from_object(vert_object)
+                    # else:
+                    self.target_bmeshs[self.target_object].from_object(vert_object, context.evaluated_depsgraph_get())
                 vert_bmesh = self.target_bmeshs[self.target_object]
             verts = vert_bmesh.verts
             verts.ensure_lookup_table()

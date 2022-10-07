@@ -127,6 +127,7 @@ class SnapData:
     """
 
     def __init__(self, context, region, settings, selected_meshes, scene_meshes=None):
+        self.ignored_modifiers = {}
         self.settings = settings
         self.is_origin_snapdata = scene_meshes is None
         self.keep_processing = True
@@ -183,19 +184,19 @@ class SnapData:
             # target objects lists (for snapping to unselected verts).
             if not self.object_mode:
                 for selected_mesh in selected_meshes:
-                    self.add_object_data(selected_mesh, depsgraph=depsgraph, is_selected=True)
+                    self.add_object_data(context, selected_mesh, depsgraph=depsgraph, is_selected=True)
 
             # Add meshes that do not have polygons. (cannot be found via ray-cast)
             for object_name in scene_meshes:
                 obj = bpy.data.objects[object_name]
                 if object_name not in selected_meshes and (
                         obj.type == 'CURVE' or (obj.type == 'MESH' and len(obj.data.vertices) > 0 and len(obj.data.polygons) == 0)):
-                    self.add_object_data(object_name, depsgraph=depsgraph)
+                    self.add_object_data(context, object_name, depsgraph=depsgraph)
 
         # Add all objects for the snap origin (selected objects only).
         elif self.is_origin_snapdata:
             for selected_mesh in selected_meshes:
-                self.add_object_data(selected_mesh, is_selected=True, depsgraph=depsgraph)
+                self.add_object_data(context, selected_mesh, is_selected=True, depsgraph=depsgraph)
 
         # if origin snapdata, start processing points immediately
         if self.is_origin_snapdata:
@@ -203,7 +204,7 @@ class SnapData:
             # self.process_iteration(context, max_run_duration=0.5)
             # self.process_iteration(context,max_run_duration=5)
 
-    def add_object_data(self, object_name, is_selected=False, depsgraph=None, set_first_priority=False):
+    def add_object_data(self,context, object_name, is_selected=False, depsgraph=None, set_first_priority=False):
         """
         Creates ObjectPointData for the object.
         Adds object to the "To Process" list.
@@ -226,7 +227,15 @@ class SnapData:
                 if self.is_origin_snapdata:
                     current_mode = quicksnap_utils.set_object_mode_if_needed()
                 if self.object_mode:
+
+                    if self.settings.ignore_modifiers_source:
+                        self.ignored_modifiers[object_name] = quicksnap_utils.ignore_modifiers(object_name,
+                                                                  self.settings.ignore_mirror_modifier_source)
+                    depsgraph = context.evaluated_depsgraph_get()
                     obj = bpy.data.objects[object_name].evaluated_get(depsgraph)
+                    if self.settings.ignore_modifiers_source and not self.settings.disable_ignored_modifiers:
+                        quicksnap_utils.revert_modifiers(object_name, self.ignored_modifiers[object_name])
+                        self.ignored_modifiers = {}
                 else:
                     obj = bpy.data.objects[object_name]
                     # obj = bpy.data.objects[object_name]
@@ -256,10 +265,11 @@ class SnapData:
             # Add object in the list if it is not already
             else:
                 # logger.debug(f"Addmesh:{object_name} -  FIRST ADD Scene")
-                if self.settings.ignore_modifiers:
-                    obj = bpy.data.objects[object_name]
-                else:
-                    obj = bpy.data.objects[object_name].evaluated_get(depsgraph)
+                ignored_modifiers = []
+                if self.settings.ignore_modifiers_target:
+                    ignored_modifiers = quicksnap_utils.ignore_modifiers(object_name, self.settings.ignore_mirror_modifier_target)
+                depsgraph = context.evaluated_depsgraph_get()
+                obj = bpy.data.objects[object_name].evaluated_get(depsgraph)
                 self.objects_point_data[object_name] = ObjectPointData(obj,
                                                                        self.scene_meshes.index(object_name),
                                                                        self.perspective_matrix,
@@ -270,6 +280,7 @@ class SnapData:
                                                                        view_location=self.view_location)
                 # logger.debug(f"Adding to target verts data scene:{object_name}")
                 self.to_process_scene.append(object_name)
+                quicksnap_utils.revert_modifiers(object_name, ignored_modifiers)
 
     def add_scene_roots(self, context, selected_meshes, scene_meshes=None):
         """
@@ -568,7 +579,7 @@ class SnapData:
             for obj_name in all_meshes:
                 obj = bpy.data.objects[obj_name]
                 if obj.type == 'MESH':
-                    if self.settings.ignore_modifiers:
+                    if self.settings.ignore_modifiers_target:
                         max_vertex_count += len(obj.data.vertices)
                     else:
                         max_vertex_count += len(obj.evaluated_get(depsgraph).data.vertices)
@@ -585,3 +596,10 @@ class SnapData:
 
         # logger.debug(f"Max vertex count: {max_vertex_count} - is_origin_snapdata={self.is_origin_snapdata}")
         return max_vertex_count
+
+    def revert_modifiers(self):
+        for obj_name in self.ignored_modifiers:
+            quicksnap_utils.revert_modifiers(obj_name, self.ignored_modifiers[obj_name])
+        self.ignored_modifiers = {}
+
+
