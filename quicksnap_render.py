@@ -228,16 +228,23 @@ def draw_callback_3d(self, context):
             return
         vert_object = bpy.data.objects[self.target_object]
         if self.target_object not in self.edge_links:
-            self.edge_links[self.target_object]={}
+            self.edge_links[self.target_object] = {}
         if vert_index not in self.edge_links[self.target_object]:
             matrix = vert_object.matrix_world
             # vert_bmesh.from_mesh(vert_object.data)
             if self.target_object in self.selection_objects:
                 # vert_bmesh.from_mesh(vert_object.data)
-                vert_bmesh = bmesh.from_edit_mesh(vert_object.data)
+                if self.target_object not in self.target_bmeshs:
+                    self.target_bmeshs[self.target_object] = bmesh.from_edit_mesh(vert_object.data)
+                vert_bmesh = self.target_bmeshs[self.target_object]
             else:
-                vert_bmesh = bmesh.new()  # create an empty BMesh
-                vert_bmesh.from_object(vert_object, context.evaluated_depsgraph_get())
+                if self.target_object not in self.target_bmeshs:
+                    self.target_bmeshs[self.target_object] = bmesh.new()  # create an empty BMesh
+                    if self.settings.ignore_modifiers:
+                        self.target_bmeshs[self.target_object].from_object(vert_object)
+                    else:
+                        self.target_bmeshs[self.target_object].from_object(vert_object, context.evaluated_depsgraph_get())
+                vert_bmesh = self.target_bmeshs[self.target_object]
             verts = vert_bmesh.verts
             verts.ensure_lookup_table()
             vert = vert_bmesh.verts[vert_index]

@@ -128,7 +128,8 @@ class SnapData:
         Contains all the necessary data to find the closest point to the mouse
     """
 
-    def __init__(self, context, region, selected_meshes, scene_meshes=None):
+    def __init__(self, context, region, settings, selected_meshes, scene_meshes=None):
+        self.settings = settings
         self.is_origin_snapdata = scene_meshes is None
         self.keep_processing = True
         self.width_half = region.width / 2.0
@@ -253,7 +254,10 @@ class SnapData:
             # Add object in the list if it is not already
             else:
                 # logger.debug(f"Addmesh:{object_name} -  FIRST ADD Scene")
-                obj = bpy.data.objects[object_name].evaluated_get(depsgraph)
+                if self.settings.ignore_modifiers:
+                    obj = bpy.data.objects[object_name]
+                else:
+                    obj = bpy.data.objects[object_name].evaluated_get(depsgraph)
                 self.objects_point_data[object_name] = ObjectPointData(obj,
                                                                        self.scene_meshes.index(object_name),
                                                                        self.perspective_matrix,
@@ -554,7 +558,10 @@ class SnapData:
                 for obj_name in all_meshes:
                     obj = bpy.data.objects[obj_name]
                     if obj.type == 'MESH':
-                        max_vertex_count += len(obj.evaluated_get(depsgraph).data.vertices)
+                        if self.settings.ignore_modifiers:
+                            max_vertex_count += len(obj.data.vertices)
+                        else:
+                            max_vertex_count += len(obj.evaluated_get(depsgraph).data.vertices)
                     elif obj.type == 'CURVE':
                         max_vertex_count += sum(
                             [(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])
