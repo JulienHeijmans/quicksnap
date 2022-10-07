@@ -25,7 +25,6 @@ def time_it(func):
 class ObjectPointData:
     """    Contains the world space/screen space/counts of one object in the scene.  """
 
-
     def __init__(self, obj, object_id, perspective_matrix, width, height, width_half, height_half, view_location,
                  check_select=False,
                  filter_selected=True):
@@ -49,7 +48,6 @@ class ObjectPointData:
             vertices = obj.data.vertices
             max_count = len(vertices)
             shape = (max_count, 3)
-
             # Copy verts co points
             points_object_space = np.empty(max_count * 3, dtype=np.float64)
             vertices.foreach_get('co', points_object_space)
@@ -185,7 +183,7 @@ class SnapData:
             # target objects lists (for snapping to unselected verts).
             if not self.object_mode:
                 for selected_mesh in selected_meshes:
-                    self.add_object_data(selected_mesh, is_selected=True)
+                    self.add_object_data(selected_mesh, depsgraph=depsgraph, is_selected=True)
 
             # Add meshes that do not have polygons. (cannot be found via ray-cast)
             for object_name in scene_meshes:
@@ -227,7 +225,11 @@ class SnapData:
                 # logger.debug(f"add_object_data:{object_name} - First add - is origin:{self.is_origin_snapdata}")
                 if self.is_origin_snapdata:
                     current_mode = quicksnap_utils.set_object_mode_if_needed()
-                obj = bpy.data.objects[object_name]
+                if self.object_mode:
+                    obj = bpy.data.objects[object_name].evaluated_get(depsgraph)
+                else:
+                    obj = bpy.data.objects[object_name]
+                    # obj = bpy.data.objects[object_name]
                 self.objects_point_data[object_name] = ObjectPointData(obj,
                                                                        self.scene_meshes.index(object_name),
                                                                        self.perspective_matrix,
@@ -532,11 +534,15 @@ class SnapData:
         """
         # logger.debug(f"get_max_vertex_count - source={self.is_source}")
         if self.is_origin_snapdata:
+            depsgraph = context.evaluated_depsgraph_get()
             max_vertex_count = len(selected_objects)
             for obj_name in selected_objects:
                 obj = bpy.data.objects[obj_name]
                 if obj.type == 'MESH':
-                    max_vertex_count += len(obj.data.vertices)
+                    if self.object_mode:
+                        max_vertex_count += len(obj.evaluated_get(depsgraph).data.vertices)
+                    else:
+                        max_vertex_count += len(obj.data.vertices)
                 elif obj.type == 'CURVE':
                     max_vertex_count += sum(
                         [(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])

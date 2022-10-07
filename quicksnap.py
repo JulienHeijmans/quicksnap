@@ -137,7 +137,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.target_object = target_object
         self.target_object_is_root = is_root
 
-
         if self.settings.display_hover_wireframe:
             if hover_object != "":
                 self.store_object_display(hover_object)
@@ -145,7 +144,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
             self.hover_object = hover_object
         self.closest_vertexid = mesh_vertid
-
 
     def revert_data(self, context, apply=False):
         """
