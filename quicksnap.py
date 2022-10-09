@@ -70,6 +70,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.backup_data(context)
         self.update(context, region)
         context.area.header_text_set(f"QuickSnap: Pick a vertex/point from the selection to start move-snapping")
+        self.detect_hotkey()
         return True
 
     def backup_data(self, context):
@@ -348,6 +349,10 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                          context.space_data.region_3d)
 
     def __init__(self):
+        self.hotkey_type = 'V'
+        self.hotkey_alt = False
+        self.hotkey_ctrl = True
+        self.hotkey_shift = True
         self.menu_open = False
         self.hover_object = ""
         self.edge_links = None
@@ -429,11 +434,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
         self.handle_hotkeys(context, event, region)
 
-        if event.type in {'RIGHTMOUSE', 'ESC'}:  # Cancel
+        if event.type in {'RIGHTMOUSE', 'ESC'} and not self.menu_open and event.value == 'PRESS':  # Cancel
             self.terminate(context, revert=True)
             return {'CANCELLED'}
 
-        elif event.type == 'LEFTMOUSE':  # Confirm
+        elif event.type == 'LEFTMOUSE' and not self.menu_open:  # Confirm
             if self.current_state == State.IDLE and self.closest_source_id >= 0 and self.closest_actionable:
                 self.current_state = State.SOURCE_PICKED
                 self.set_object_display("", "")
@@ -443,7 +448,9 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 return {'FINISHED'}
 
         elif event.type == 'MOUSEMOVE' or snapdata_updated:  # Apply
-            self.menu_open = False
+            if self.menu_open:
+                self.handle_pie_menu_closed(context,event,region)
+                self.menu_open = False
             self.update_mouse_position(context, event)
             if self.camera_moved:
                 self.refresh_vertex_data(context, region)
@@ -467,7 +474,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         if event.is_repeat or event.value != 'PRESS':
             return
         event_type = event.type
-        if event_type == 'X':
+        if not self.menu_open and event_type == self.hotkey_type and event.shift == self.hotkey_shift \
+                and event.ctrl == self.hotkey_ctrl and event.alt == self.hotkey_alt and self.current_state==State.IDLE:
+            self.menu_open = True
+            bpy.ops.wm.call_menu_pie(name="VIEW3D_MT_PIE_quicksnap")
+        elif event_type == 'X':
             if event.shift:
                 new_snapping = 'YZ'
             else:
@@ -519,15 +530,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         elif event_type == 'W':
             self.settings.display_target_wireframe = not self.settings.display_target_wireframe
             self.set_object_display(self.target_object, self.hover_object, self.target_object_is_root, force=True)
-        elif event_type == 'V' and not self.menu_open:
-            self.menu_open = True
-            bpy.ops.wm.call_menu_pie(name="VIEW3D_MT_PIE_quicksnap")
         elif event_type == 'M':
             self.settings.ignore_modifiers = not self.settings.ignore_modifiers
 
             self.refresh_vertex_data(context, region)
             self.set_object_display(self.target_object, self.hover_object, self.target_object_is_root, force=True)
-        print("check_pie")
         self.update_header(context)
 
     def terminate(self, context, revert=False):
@@ -613,6 +620,32 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
+    def handle_pie_menu_closed(self, context, event, region):
+        if self.settings.snap_source_type != self.snapdata_source.snap_type:
+            print("Reinit source")
+            self.snapdata_source.__init__(context, region, self.settings, self.selection_objects)
+        if self.settings.snap_target_type != self.snapdata_target.snap_type:
+            print("Reinit target")
+            self.snapdata_target.is_enabled = False
+            self.snapdata_target.__init__(context, region, self.settings, self.selection_objects,
+                                          quicksnap_utils.get_scene_objects(True))
+        pass
+
+    def detect_hotkey(self):
+        key_config = bpy.context.window_manager.keyconfigs.addon
+        categories = set([cat for (cat, key) in addon_keymaps])
+        id_names = [key.idname for (cat, key) in addon_keymaps]
+        for cat in categories:
+            active_cat = key_config.keymaps.find(cat.name, space_type=cat.space_type,
+                                                 region_type=cat.region_type).active()
+            for active_key in active_cat.keymap_items:
+                if active_key.idname in id_names:
+                    self.hotkey_type = active_key.type
+                    self.hotkey_ctrl = active_key.ctrl
+                    self.hotkey_shift = active_key.shift
+                    self.hotkey_alt = active_key.alt
+        pass
+
 
 def get_addon_settings():
     addon = bpy.context.preferences.addons.get(__name_addon__)
@@ -637,6 +670,15 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
     highlight_target_vertex_edges: bpy.props.BoolProperty(name="Highlight target vertex edges (Impact performances)",
                                                           default=True)
     ignore_modifiers: bpy.props.BoolProperty(name="Ignore modifiers (For heavy scenes)", default=False)
+
+    snap_source_type: bpy.props.EnumProperty(
+        name="Snap From",
+        items=[
+            ("POINTS", "Vertices, Curve points", "", 0),
+            ("MIDPOINTS", "Edges mid-points", "", 1),
+            ("FACE", "Face centers", "", 2)
+        ],
+        default="POINTS", )
 
     snap_target_type: bpy.props.EnumProperty(
         name="Snap To",
@@ -748,12 +790,24 @@ class VIEW3D_MT_PIE_quicksnap(bpy.types.Menu):
         target_column = pie.column()
         target_column.label(text="Snap To:")
         target_column.prop(settings, "snap_target_type", expand=True)
+        pie.operator("quicksnap.open_settings")
 
+class QUICKSNAP_OT_OpenSettings(bpy.types.Operator):
+    bl_idname = "quicksnap.open_settings"
+    bl_label = "Open Addon Settings"
+    bl_options = {'REGISTER', 'INTERNAL'}
 
+    def execute(self, context):
+        bpy.ops.screen.userpref_show()
+        bpy.context.preferences.active_section = 'ADDONS'
+        bpy.data.window_managers["WinMan"].addon_search = "QuickSnap"
+        bpy.data.window_managers["WinMan"].addon_filter = 'All'
+        return {"FINISHED"}
 
 blender_classes = [
     QuickVertexSnapOperator,
     QuickVertexSnapPreference,
+    QUICKSNAP_OT_OpenSettings,
     VIEW3D_MT_PIE_quicksnap
 ]
 

@@ -129,6 +129,10 @@ class SnapData:
     def __init__(self, context, region, settings, selected_meshes, scene_meshes=None):
         self.settings = settings
         self.is_origin_snapdata = scene_meshes is None
+        if self.is_origin_snapdata:
+            self.snap_type = settings.snap_source_type
+        else:
+            self.snap_type = settings.snap_target_type
         self.keep_processing = True
         self.width_half = region.width / 2.0
         self.height_half = region.height / 2.0
