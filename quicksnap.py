@@ -676,7 +676,7 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         items=[
             ("POINTS", "Vertices, Curve points", "", 0),
             ("MIDPOINTS", "Edges mid-points", "", 1),
-            ("FACE", "Face centers", "", 2)
+            ("FACES", "Face centers", "", 2)
         ],
         default="POINTS", )
 
@@ -685,7 +685,7 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         items=[
             ("POINTS", "Vertices, Curve points", "", 0),
             ("MIDPOINTS", "Edges mid-points", "", 1),
-            ("FACE", "Face centers", "", 2)
+            ("FACES", "Face centers", "", 2)
         ],
         default="POINTS", )
 
@@ -784,13 +784,17 @@ class VIEW3D_MT_PIE_quicksnap(bpy.types.Menu):
         settings=get_addon_settings()
 
         pie = layout.menu_pie()
-        pie.column()
+        source_column = pie.column()
+        source_column.label(text="Snap From:")
+        source_column.prop(settings, "snap_source_type", expand=True)
+
         # operator_enum will just spread all available options
         # for the type enum of the operator on the pie
         target_column = pie.column()
         target_column.label(text="Snap To:")
         target_column.prop(settings, "snap_target_type", expand=True)
         pie.operator("quicksnap.open_settings")
+
 
 class QUICKSNAP_OT_OpenSettings(bpy.types.Operator):
     bl_idname = "quicksnap.open_settings"

@@ -27,7 +27,7 @@ class ObjectPointData:
 
     def __init__(self, obj, object_id, perspective_matrix, width, height, width_half, height_half, view_location,
                  check_select=False,
-                 filter_selected=True):
+                 filter_selected=True, snap_type='POINTS'):
         """Initialize the ObjectPointData, calculates WorldSpace/ScreenSpace coordinates from local space coordinates
 
         Args:
@@ -45,25 +45,66 @@ class ObjectPointData:
 
         # Gather object space points coordinates from the mesh/curves data
         if obj.type == 'MESH':
-            vertices = obj.data.vertices
-            max_count = len(vertices)
-            shape = (max_count, 3)
-            # Copy verts co points
-            points_object_space = np.empty(max_count * 3, dtype=np.float64)
-            vertices.foreach_get('co', points_object_space)
-            points_object_space.shape = shape
-            self.indices = np.arange(len(points_object_space))
-            if check_select:
-                selected_mask = np.empty(max_count, dtype=bool)
-                vertices.foreach_get('select', selected_mask)
-                if filter_selected:
-                    points_object_space = points_object_space[selected_mask]
-                    self.indices = self.indices[selected_mask]
-                else:
-                    points_object_space = points_object_space[~selected_mask]
-                    self.indices = self.indices[~selected_mask]
+            print(f"Snap type:{snap_type}")
+            if snap_type == 'POINTS':
+                vertices = obj.data.vertices
+                max_count = len(vertices)
+                shape = (max_count, 3)
+                # Copy verts co points
+                points_object_space = np.empty(max_count * 3, dtype=np.float64)
+                vertices.foreach_get('co', points_object_space)
+                points_object_space.shape = shape
+                self.indices = np.arange(max_count)
+                if check_select:
+                    selected_mask = np.empty(max_count, dtype=bool)
+                    vertices.foreach_get('select', selected_mask)
+                    if filter_selected:
+                        points_object_space = points_object_space[selected_mask]
+                        self.indices = self.indices[selected_mask]
+                    else:
+                        points_object_space = points_object_space[~selected_mask]
+                        self.indices = self.indices[~selected_mask]
 
-        elif obj.type == 'CURVE':
+            elif snap_type == 'MIDPOINTS':
+                # Get verts
+                vertices = obj.data.vertices
+                verts_count = len(vertices)
+                shape = (verts_count, 3)
+                verts_object_space = np.empty(verts_count * 3, dtype=np.float64)
+                vertices.foreach_get('co', verts_object_space)
+                verts_object_space.shape = shape
+                print("vertices:")
+                print(verts_object_space)
+
+                # Get edges verts id
+                edges = obj.data.edges
+                edge_count = len(edges)
+                edges_vertid_shape = (edge_count, 2)
+                edges_vertid = np.zeros((edge_count * 2), dtype=np.int)  # [0.0, 0.0] * len(mesh.edges)
+                edges.foreach_get('vertices', edges_vertid)
+                edges_vertid.shape = edges_vertid_shape
+                # Get edges center points
+                points_object_space = (verts_object_space[edges_vertid[:, 0]]+verts_object_space[edges_vertid[:, 1]])/2
+                self.indices = np.arange(edge_count)
+                # if check_select:
+                #     selected_mask = np.empty(max_count, dtype=bool)
+                #     vertices.foreach_get('select', selected_mask)
+                #     if filter_selected:
+                #         points_object_space = points_object_space[selected_mask]
+                #         self.indices = self.indices[selected_mask]
+                #     else:
+                #         points_object_space = points_object_space[~selected_mask]
+                #         self.indices = self.indices[~selected_mask]
+
+            elif snap_type == 'FACES':
+                polygons = obj.data.polygons
+                polygons_count = len(polygons)
+                points_object_space = np.empty(polygons_count * 3, dtype=np.float64)
+                polygons.foreach_get('center', points_object_space)
+                points_object_space.shape = (polygons_count, 3)
+                self.indices = np.arange(polygons_count)
+
+        elif obj.type == 'CURVE' and snap_type == 'POINTS':
             all_points = quicksnap_utils.flatten(
                 [[point.co for point in spline.bezier_points] for spline in obj.data.splines])
             all_points.extend(quicksnap_utils.flatten([[Vector((point.co[0], point.co[1], point.co[2]))
@@ -131,8 +172,10 @@ class SnapData:
         self.is_origin_snapdata = scene_meshes is None
         if self.is_origin_snapdata:
             self.snap_type = settings.snap_source_type
+            print(f"new origin snapdata. type={self.snap_type}")
         else:
             self.snap_type = settings.snap_target_type
+            print(f"new target snapdata. type={self.snap_type}")
         self.keep_processing = True
         self.width_half = region.width / 2.0
         self.height_half = region.height / 2.0
@@ -243,7 +286,8 @@ class SnapData:
                                                                        height_half=self.height_half,
                                                                        view_location=self.view_location,
                                                                        check_select=not self.object_mode,
-                                                                       filter_selected=self.is_origin_snapdata)
+                                                                       filter_selected=self.is_origin_snapdata,
+                                                                       snap_type=self.snap_type)
 
                 self.to_process_selected.insert(0, object_name)
                 if self.is_origin_snapdata:
@@ -271,7 +315,8 @@ class SnapData:
                                                                        height=self.height,
                                                                        width_half=self.width_half,
                                                                        height_half=self.height_half,
-                                                                       view_location=self.view_location)
+                                                                       view_location=self.view_location,
+                                                                       snap_type=self.snap_type)
                 # logger.debug(f"Adding to target verts data scene:{object_name}")
                 self.to_process_scene.append(object_name)
 
@@ -544,9 +589,17 @@ class SnapData:
                 obj = bpy.data.objects[obj_name]
                 if obj.type == 'MESH':
                     if self.object_mode:
-                        max_vertex_count += len(obj.evaluated_get(depsgraph).data.vertices)
+                        data = obj.evaluated_get(depsgraph).data
                     else:
-                        max_vertex_count += len(obj.data.vertices)
+                        data = obj.data
+
+                    if self.snap_type == 'POINTS':
+                        max_vertex_count += len(data.vertices)
+                    elif self.snap_type == 'MIDPOINTS':
+                        max_vertex_count += len(data.edges)
+                    elif self.snap_type == 'FACES':
+                        max_vertex_count += len(data.polygons)
+
                 elif obj.type == 'CURVE':
                     max_vertex_count += sum(
                         [(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])
@@ -573,16 +626,29 @@ class SnapData:
                 obj = bpy.data.objects[obj_name]
                 if obj.type == 'MESH':
                     if self.settings.ignore_modifiers:
-                        max_vertex_count += len(obj.data.vertices)
+                        data = obj.data
                     else:
-                        max_vertex_count += len(obj.evaluated_get(depsgraph).data.vertices)
+                        data = obj.evaluated_get(depsgraph).data
+
+                    if self.snap_type == 'POINTS':
+                        max_vertex_count += len(data.vertices)
+                    elif self.snap_type == 'MIDPOINTS':
+                        max_vertex_count += len(data.edges)
+                    elif self.snap_type == 'FACES':
+                        max_vertex_count += len(data.polygons)
+
                 elif obj.type == 'CURVE':
                     max_vertex_count += sum(
                         [(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])
             for obj_name in selected_objects:
                 obj = bpy.data.objects[obj_name]
                 if obj.type == 'MESH':
-                    max_vertex_count += len(obj.data.vertices)
+                    if self.snap_type == 'POINTS':
+                        max_vertex_count += len(obj.data.vertices)
+                    elif self.snap_type == 'MIDPOINTS':
+                        max_vertex_count += len(obj.data.edges)
+                    elif self.snap_type == 'FACES':
+                        max_vertex_count += len(obj.data.polygons)
                 elif obj.type == 'CURVE':
                     max_vertex_count += sum(
                         [(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])
