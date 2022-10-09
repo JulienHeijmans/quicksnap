@@ -241,7 +241,7 @@ def draw_callback_3d(self, context):
                 if self.target_object not in self.target_bmeshs:
                     self.target_bmeshs[self.target_object] = bmesh.new()  # create an empty BMesh
                     if self.settings.ignore_modifiers:
-                        self.target_bmeshs[self.target_object].from_object(vert_object)
+                        self.target_bmeshs[self.target_object].from_mesh(vert_object.data)
                     else:
                         self.target_bmeshs[self.target_object].from_object(vert_object, context.evaluated_depsgraph_get())
                 vert_bmesh = self.target_bmeshs[self.target_object]

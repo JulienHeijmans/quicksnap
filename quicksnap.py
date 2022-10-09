@@ -348,7 +348,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                          context.space_data.region_3d)
 
     def __init__(self):
-        self.menu_open = False
         self.hover_object = ""
         self.edge_links = None
         self.target_bmeshs = None
@@ -443,7 +442,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 return {'FINISHED'}
 
         elif event.type == 'MOUSEMOVE' or snapdata_updated:  # Apply
-            self.menu_open = False
             self.update_mouse_position(context, event)
             if self.camera_moved:
                 self.refresh_vertex_data(context, region)
@@ -519,15 +517,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         elif event_type == 'W':
             self.settings.display_target_wireframe = not self.settings.display_target_wireframe
             self.set_object_display(self.target_object, self.hover_object, self.target_object_is_root, force=True)
-        elif event_type == 'V' and not self.menu_open:
-            self.menu_open = True
-            bpy.ops.wm.call_menu_pie(name="VIEW3D_MT_PIE_quicksnap")
         elif event_type == 'M':
             self.settings.ignore_modifiers = not self.settings.ignore_modifiers
 
             self.refresh_vertex_data(context, region)
             self.set_object_display(self.target_object, self.hover_object, self.target_object_is_root, force=True)
-        print("check_pie")
         self.update_header(context)
 
     def terminate(self, context, revert=False):
@@ -638,15 +632,6 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
                                                           default=True)
     ignore_modifiers: bpy.props.BoolProperty(name="Ignore modifiers (For heavy scenes)", default=False)
 
-    snap_target_type: bpy.props.EnumProperty(
-        name="Snap To",
-        items=[
-            ("POINTS", "Vertices, Curve points", "", 0),
-            ("MIDPOINTS", "Edges mid-points", "", 1),
-            ("FACE", "Face centers", "", 2)
-        ],
-        default="POINTS", )
-
     # addon updater preferences from `__init__`, be sure to copy all of them
     auto_check_update: bpy.props.BoolProperty(
         name="Auto-check for Update",
@@ -732,29 +717,9 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
 #     bl_icon = "ops.transform.vertex_random"
 #     operator="object.quick_vertex_snap"
 
-
-class VIEW3D_MT_PIE_quicksnap(bpy.types.Menu):
-    # label is displayed at the center of the pie menu.
-    bl_label = "QuickSnap_Pie"
-
-    def draw(self, context):
-        layout = self.layout
-        settings=get_addon_settings()
-
-        pie = layout.menu_pie()
-        pie.column()
-        # operator_enum will just spread all available options
-        # for the type enum of the operator on the pie
-        target_column = pie.column()
-        target_column.label(text="Snap To:")
-        target_column.prop(settings, "snap_target_type", expand=True)
-
-
-
 blender_classes = [
     QuickVertexSnapOperator,
     QuickVertexSnapPreference,
-    VIEW3D_MT_PIE_quicksnap
 ]
 
 
