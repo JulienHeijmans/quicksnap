@@ -73,8 +73,6 @@ class ObjectPointData:
                 verts_object_space = np.empty(verts_count * 3, dtype=np.float64)
                 vertices.foreach_get('co', verts_object_space)
                 verts_object_space.shape = shape
-                print("vertices:")
-                print(verts_object_space)
 
                 # Get edges verts id
                 edges = obj.data.edges
@@ -86,15 +84,21 @@ class ObjectPointData:
                 # Get edges center points
                 points_object_space = (verts_object_space[edges_vertid[:, 0]]+verts_object_space[edges_vertid[:, 1]])/2
                 self.indices = np.arange(edge_count)
-                # if check_select:
-                #     selected_mask = np.empty(max_count, dtype=bool)
-                #     vertices.foreach_get('select', selected_mask)
-                #     if filter_selected:
-                #         points_object_space = points_object_space[selected_mask]
-                #         self.indices = self.indices[selected_mask]
-                #     else:
-                #         points_object_space = points_object_space[~selected_mask]
-                #         self.indices = self.indices[~selected_mask]
+                if check_select:
+                    # filter out selected/unselected
+                    selected_vert_mask = np.empty(verts_count, dtype=bool)
+                    vertices.foreach_get('select', selected_vert_mask)
+
+                    if filter_selected:
+                        # Filter edges where both edges are selected
+                        selected_mask = selected_vert_mask[edges_vertid[:, 0]] & selected_vert_mask[edges_vertid[:, 1]]
+                        points_object_space = points_object_space[selected_mask]
+                        self.indices = self.indices[selected_mask]
+                    else:
+                        # Filter edges where none of the two verts are selected
+                        selected_mask = selected_vert_mask[edges_vertid[:, 0]] | selected_vert_mask[edges_vertid[:, 1]]
+                        points_object_space = points_object_space[~selected_mask]
+                        self.indices = self.indices[~selected_mask]
 
             elif snap_type == 'FACES':
                 polygons = obj.data.polygons
@@ -103,6 +107,33 @@ class ObjectPointData:
                 polygons.foreach_get('center', points_object_space)
                 points_object_space.shape = (polygons_count, 3)
                 self.indices = np.arange(polygons_count)
+                if check_select:
+                    # get verts to find selected verts
+                    vertices = obj.data.vertices
+                    verts_count = len(vertices)
+                    verts_selected = np.empty(verts_count, dtype=bool)
+                    vertices.foreach_get('select', verts_selected)
+
+                    # get face verts
+                    polygon_vert_count=np.empty(polygons_count, dtype=int)
+                    polygons.foreach_get('loop_total', polygon_vert_count)
+
+                    polygon_vert_start_index = np.concatenate([np.zeros(1, dtype=np.int), np.cumsum(polygon_vert_count[1:])])
+
+                    polygon_verts = np.empty(np.sum(polygon_vert_count), dtype=np.int)
+                    polygons.foreach_get('vertices', polygon_verts)
+                    selected_polygon_verts = verts_selected[polygon_verts]
+
+                    if filter_selected:
+                        # Filter polygons where all verts are selected
+                        selected_mask = np.logical_and.reduceat(selected_polygon_verts, polygon_vert_start_index)
+                        points_object_space = points_object_space[selected_mask]
+                        self.indices = self.indices[selected_mask]
+                    else:
+                        # Filter polygons where none of the verts are selected
+                        selected_mask = np.logical_or.reduceat(selected_polygon_verts, polygon_vert_start_index)
+                        points_object_space = points_object_space[~selected_mask]
+                        self.indices = self.indices[~selected_mask]
 
         elif obj.type == 'CURVE' and snap_type == 'POINTS':
             all_points = quicksnap_utils.flatten(
@@ -131,8 +162,8 @@ class ObjectPointData:
         else:
             self.completed = True
             return
-        # Get WorldSpace
 
+        # Get WorldSpace
         world_space_co = np.ones(shape=(len(points_object_space), 4), dtype=np.float64)
         world_space_co[:, :-1] = points_object_space  # cos v (x,y,z,1) - point,   v(x,y,z,0)- vector
         world_space_co = np.einsum('ij,aj->ai', matrix_world, world_space_co)

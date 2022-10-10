@@ -223,37 +223,80 @@ def draw_callback_3d(self, context):
     else:
         draw_points_3d(coords, color=(1, 1, 0, 0.5), point_width=3, depth_test=True)
 
-    if self.closest_target_id >= 0 and self.settings.highlight_target_vertex_edges:
-        vert_index = self.snapdata_target.indices[self.closest_target_id]
+    if self.settings.highlight_target_vertex_edges:
+        if self.current_state == State.IDLE:
+            draw_edge_highlight(context,
+                                target_object=self.target_object,
+                                target_id=self.closest_source_id,
+                                snapdata=self.snapdata_source,
+                                edge_links=self.source_edge_links,
+                                bmeshs=self.source_bmeshs,
+                                is_selection=self.target_object in self.selection_objects,
+                                ignore_modifiers=self.settings.ignore_modifiers,
+                                width=self.settings.edge_highlight_width,
+                                color=self.settings.edge_highlight_color_source,
+                                opacity=self.settings.edge_highlight_opacity)
+
+        elif self.current_state == State.SOURCE_PICKED:
+            draw_edge_highlight(context,
+                                target_object=self.target_object,
+                                target_id=self.closest_target_id,
+                                snapdata=self.snapdata_target,
+                                edge_links=self.target_edge_links,
+                                bmeshs=self.target_bmeshs,
+                                is_selection=self.target_object in self.selection_objects,
+                                ignore_modifiers=self.settings.ignore_modifiers,
+                                width=self.settings.edge_highlight_width,
+                                color=self.settings.edge_highlight_color_target,
+                                opacity=self.settings.edge_highlight_opacity)
+
+
+def draw_edge_highlight(context,
+                        target_object,
+                        target_id,
+                        snapdata,
+                        edge_links,
+                        bmeshs,
+                        is_selection,
+                        ignore_modifiers,
+                        width=2,
+                        color=(1, 1, 0),
+                        opacity=1
+                        ):
+    if target_id >= 0:
+        vert_index = snapdata.indices[target_id]
         if vert_index < 0:
             return
-        vert_object = bpy.data.objects[self.target_object]
-        if self.target_object not in self.edge_links:
-            self.edge_links[self.target_object] = {}
-        if vert_index not in self.edge_links[self.target_object]:
+        vert_object = bpy.data.objects[target_object]
+        if target_object not in edge_links:
+            edge_links[target_object] = {}
+        if vert_index not in edge_links[target_object]:
             matrix = vert_object.matrix_world
-            # vert_bmesh.from_mesh(vert_object.data)
-            if self.snapdata_target.snap_type == 'POINTS':
-                if self.target_object in self.selection_objects:
+
+            if snapdata.snap_type == 'POINTS':
+                if is_selection:
                     # vert_bmesh.from_mesh(vert_object.data)
-                    if self.target_object not in self.target_bmeshs:
-                        self.target_bmeshs[self.target_object] = bmesh.from_edit_mesh(vert_object.data)
-                    vert_bmesh = self.target_bmeshs[self.target_object]
-                else:
-                    if self.target_object not in self.target_bmeshs:
-                        self.target_bmeshs[self.target_object] = bmesh.new()  # create an empty BMesh
-                        if self.settings.ignore_modifiers:
-                            self.target_bmeshs[self.target_object].from_mesh(vert_object.data)
+                    if target_object not in bmeshs:
+                        if vert_object.data.is_editmode:
+                            bmeshs[target_object] = bmesh.from_edit_mesh(vert_object.data)
                         else:
-                            self.target_bmeshs[self.target_object].from_object(vert_object,
-                                                                               context.evaluated_depsgraph_get())
-                    vert_bmesh = self.target_bmeshs[self.target_object]
+                            bmeshs[target_object] = bmesh.new()
+                            bmeshs[target_object].from_mesh(vert_object.data)
+                    vert_bmesh = bmeshs[target_object]
+                else:
+                    if target_object not in bmeshs:
+                        bmeshs[target_object] = bmesh.new()  # create an empty BMesh
+                        if ignore_modifiers:
+                            bmeshs[target_object].from_mesh(vert_object.data)
+                        else:
+                            bmeshs[target_object].from_object(vert_object, context.evaluated_depsgraph_get())
+                    vert_bmesh = bmeshs[target_object]
 
                 verts = vert_bmesh.verts
                 verts.ensure_lookup_table()
                 vert = vert_bmesh.verts[vert_index]
                 edges = vert.link_edges
-                self.edge_links[self.target_object][vert_index] = []
+                edge_links[target_object][vert_index] = []
                 for edge in edges:
                     if edge.verts[0] == vert:
                         first_vert = 0
@@ -261,58 +304,50 @@ def draw_callback_3d(self, context):
                     else:
                         first_vert = 1
                         second_vert = 0
-                    self.edge_links[self.target_object][vert_index].append((matrix @ edge.verts[first_vert].co,
-                                                                            matrix @ edge.verts[second_vert].co))
-
-                # for edge in self.edge_links[self.target_object][vert_index]:
-                #     draw_line_3d_smooth_blend(edge[0],
-                #                               edge[1],
-                #                               color_a=(1, 1, 0, 1),
-                #                               color_b=(1, 1, 0, 0),
-                #                               line_width=1, depth_test=False)
+                    edge_links[target_object][vert_index].append((matrix @ edge.verts[first_vert].co,
+                                                                  matrix @ edge.verts[second_vert].co))
 
             else:
-                if self.target_object in self.selection_objects:
+                if is_selection:
                     data = vert_object.data
                 else:
-                    if self.settings.ignore_modifiers:
+                    if ignore_modifiers:
                         data = vert_object.data
                     else:
                         data = vert_object.evaluated_get(context.evaluated_depsgraph_get()).data
 
-                if self.snapdata_target.snap_type == 'MIDPOINTS':
+                if snapdata.snap_type == 'MIDPOINTS':
                     verts = data.vertices
                     edges = data.edges
-                    self.edge_links[self.target_object][vert_index] = []
-                    self.edge_links[self.target_object][vert_index].append(
-                        (self.snapdata_target.world_space[self.closest_target_id],
+                    edge_links[target_object][vert_index] = []
+                    edge_links[target_object][vert_index].append(
+                        (snapdata.world_space[target_id],
                          matrix @ verts[edges[vert_index].vertices[0]].co))
-                    self.edge_links[self.target_object][vert_index].append(
-                        (self.snapdata_target.world_space[self.closest_target_id],
+                    edge_links[target_object][vert_index].append(
+                        (snapdata.world_space[target_id],
                          matrix @ verts[edges[vert_index].vertices[1]].co))
 
-                elif self.snapdata_target.snap_type == 'FACES':
+                elif snapdata.snap_type == 'FACES':
                     verts = data.vertices
                     polygons = data.polygons
                     loops = data.loops
-                    self.edge_links[self.target_object][vert_index] = []
-                    dump(polygons[vert_index])
+                    edge_links[target_object][vert_index] = []
                     poly = polygons[vert_index]
                     for idx in range(0, poly.loop_total):
                         current_loop = poly.loop_start + idx
                         loop_second = poly.loop_start + ((idx + 1) % poly.loop_total)
-                        self.edge_links[self.target_object][vert_index].append(
+                        edge_links[target_object][vert_index].append(
                             (matrix @ verts[loops[current_loop].vertex_index].co,
                              matrix @ verts[loops[loop_second].vertex_index].co))
 
-        if self.snapdata_target.snap_type == 'POINTS':
+        if snapdata.snap_type == 'POINTS':
             alpha_end = 0
         else:
-            alpha_end = 1
+            alpha_end = opacity
 
-        for edge in self.edge_links[self.target_object][vert_index]:
+        for edge in edge_links[target_object][vert_index]:
             draw_line_3d_smooth_blend(edge[0],
                                       edge[1],
-                                      color_a=(1, 1, 0, 1),
-                                      color_b=(1, 1, 0, alpha_end),
-                                      line_width=3, depth_test=False)
+                                      color_a=(*color, opacity),
+                                      color_b=(*color, alpha_end),
+                                      line_width=width, depth_test=False)

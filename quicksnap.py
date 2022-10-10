@@ -64,9 +64,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                 self.mouse_position)
         self.perspective_matrix = context.space_data.region_3d.perspective_matrix
         self.perspective_matrix_inverse = self.perspective_matrix.inverted()
-        self.edge_links = {}
+        self.target_edge_links = {}
         self.target_bmeshs = {}
         self.target_object_display_backup = {}
+        self.source_edge_links = {}
+        self.source_bmeshs = {}
         self.backup_data(context)
         self.update(context, region)
         context.area.header_text_set(f"QuickSnap: Pick a vertex/point from the selection to start move-snapping")
@@ -355,8 +357,10 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.hotkey_shift = True
         self.menu_open = False
         self.hover_object = ""
-        self.edge_links = None
+        self.target_edge_links = None
         self.target_bmeshs = None
+        self.source_edge_links = None
+        self.source_bmeshs = None
         self.backup_curve_points = None
         self.last_translation = None
         self.translate_ops = None
@@ -624,11 +628,13 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         if self.settings.snap_source_type != self.snapdata_source.snap_type:
             print("Reinit source")
             self.snapdata_source.__init__(context, region, self.settings, self.selection_objects)
+            self.source_edge_links = {}
         if self.settings.snap_target_type != self.snapdata_target.snap_type:
             print("Reinit target")
             self.snapdata_target.is_enabled = False
             self.snapdata_target.__init__(context, region, self.settings, self.selection_objects,
                                           quicksnap_utils.get_scene_objects(True))
+            self.target_edge_links = {}
         pass
 
     def detect_hotkey(self):
@@ -667,8 +673,22 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         default="ALWAYS", )
     display_target_wireframe: bpy.props.BoolProperty(name="Display target object wireframe", default=True)
     display_hover_wireframe: bpy.props.BoolProperty(name="Display mouseover object wireframe", default=True)
-    highlight_target_vertex_edges: bpy.props.BoolProperty(name="Highlight target vertex edges (Impact performances)",
+    highlight_target_vertex_edges: bpy.props.BoolProperty(name="Enable highlighting of target vertex edges",
                                                           default=True)
+    edge_highlight_width: bpy.props.IntProperty(name="Highlight Width", default=2, min=1, max=5)
+    edge_highlight_color_source: bpy.props.FloatVectorProperty(
+       name="Highlight Color (Selected object)",
+       subtype='COLOR',
+       default=(0.0, 1.0, 0.0),
+       min=0.0, max=1.0
+       )
+    edge_highlight_color_target: bpy.props.FloatVectorProperty(
+        name="Highlight Color (Target object)",
+        subtype='COLOR',
+        default=(1.0, 1.0, 0.0),
+        min=0.0, max=1.0
+    )
+    edge_highlight_opacity: bpy.props.FloatProperty(name="Highlight Opacity", default=1, min=0, max=1)
     ignore_modifiers: bpy.props.BoolProperty(name="Ignore modifiers (For heavy scenes)", default=False)
 
     snap_source_type: bpy.props.EnumProperty(
@@ -727,13 +747,20 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         layout = self.layout
         col = layout.column(align=True)
         col.use_property_split = True
+        col.prop(self, "ignore_modifiers")
         col.prop(self, "snap_objects_origin")
         col.prop(self, "draw_rubberband")
         col.prop(self, "display_target_wireframe")
         col.prop(self, "display_hover_wireframe")
+        col.separator()
+        col.label(text="Target Edge Highlight:")
         col.prop(self, "highlight_target_vertex_edges")
-        col.prop(self, "ignore_modifiers")
-
+        if self.highlight_target_vertex_edges:
+            col.prop(self, "edge_highlight_width")
+            col.prop(self, "edge_highlight_opacity")
+            col.prop(self, "edge_highlight_color_source")
+            col.prop(self, "edge_highlight_color_target")
+        layout.separator()
         box_content = layout.box()
         header = box_content.row(align=True)
         header.label(text="Keymap", icon='EVENT_A')
@@ -794,6 +821,7 @@ class VIEW3D_MT_PIE_quicksnap(bpy.types.Menu):
         target_column.label(text="Snap To:")
         target_column.prop(settings, "snap_target_type", expand=True)
         pie.operator("quicksnap.open_settings")
+        pie.prop(settings, "ignore_modifiers")
 
 
 class QUICKSNAP_OT_OpenSettings(bpy.types.Operator):
