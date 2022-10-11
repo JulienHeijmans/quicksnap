@@ -227,6 +227,8 @@ def draw_callback_3d(self, context):
         if vert_index < 0:
             return
         vert_object = bpy.data.objects[self.target_object]
+        if vert_object.type != "MESH":
+            return
         if self.target_object not in self.edge_links:
             self.edge_links[self.target_object] = {}
         if vert_index not in self.edge_links[self.target_object]:

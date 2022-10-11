@@ -311,14 +311,21 @@ def translate_curvepoints_worldspace(obj, backup_data, translation):
 
 def has_points_selected(context, selected_meshes):
     """
-    Returns the maximum count of visible verts/points/origins in the scene
+    Returns True if any point of the selected meshes is selected.
     """
 
-    # Gather vert count from scene stats
-    stats_string = context.scene.statistics(context.view_layer)
-    selected_vert_count = int(
-        [val for val in stats_string.split('|') if 'Verts' in val][0].split(':')[1].split('/')[0].replace('.',
-                                                                                            '').replace(',',
-                                                                                                        ''))
-
-    return selected_vert_count > 0
+    for obj_name in selected_meshes:
+        obj = bpy.data.objects[obj_name]
+        data = obj.data
+        if obj.type == 'MESH':
+            if data.total_vert_sel>0:
+                return True
+        elif obj.type == 'CURVE':
+            for spline in data.splines:
+                for point in spline.bezier_points:
+                    if point.select_control_point:
+                        return True
+                for point in spline.points:
+                    if point.select:
+                        return True
+    return False
