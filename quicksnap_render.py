@@ -268,6 +268,8 @@ def draw_edge_highlight(context,
         if vert_index < 0:
             return
         vert_object = bpy.data.objects[target_object]
+        if vert_object.type != "MESH":
+            return
         if target_object not in edge_links:
             edge_links[target_object] = {}
         if vert_index not in edge_links[target_object]:
