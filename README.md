@@ -5,6 +5,8 @@ Presentation video:
 
 https://user-images.githubusercontent.com/35562774/193322706-ec02d8a9-0bdf-48a9-8454-c88d7cd1a940.mp4
 
+If the video is not playing for you, you can watch it here: https://youtu.be/9cWV0JELM88
+
 ## Features:
 * Snap From/To:
   * Vertices
