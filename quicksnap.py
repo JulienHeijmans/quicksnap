@@ -572,7 +572,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             self.target_bmeshs = {}
 
     def update_mouse_position(self, context, event):
-        self.mouse_position = (event.mouse_x - context.area.x, event.mouse_y - context.area.y)
+        self.mouse_position = (event.mouse_region_x, event.mouse_region_y)
 
     def update_header(self, context):
         ignore_modifiers_msg = ""
