@@ -52,10 +52,14 @@ If performances are poor, hiding objects/collections that you don't want to snap
 I am saying this but the tool should be efficient enough in most cases.
 
 ## Bug Report:
-The add-on has not be battle tested yet, so you will likely encounter bugs in situations that I have not tested yet...
+* If you have an issue, first check that you have the last version of the addon, here is how to update the addon easily:
+  * In the Add-on preferences, scroll down, click on "Check now for QuickSnap update"
+  * If the same button now says: "Update now to (x,y,z)" it means that a new version exists. Click that button to update, then restart Blender.
+  * Here is a video showing how ot update the add-on from within blender: (You need to click on the play icon in the top right corner)
 
-If you encounter a bug, please report it in the Issue section, and I will have a look at it: https://github.com/JulienHeijmans/quicksnap/issues
-Do not forget to explain what you where doing and what was in your scene when the issue happened. If you can share the scene, you can also do so.
+![quicksnap-update](https://user-images.githubusercontent.com/35562774/195124862-dd573b55-ee2a-4995-a068-dd568822186d.gif)
 
-
+* If the problem persist with the latest version of the addon:
+  * Please create an issue here, and I will try to fix the issue asap: https://github.com/JulienHeijmans/quicksnap/issues
+  * Do not forget to explain what you were doing and what was in your scene when the issue happened. If you can share the scene, you can also do so.
 
