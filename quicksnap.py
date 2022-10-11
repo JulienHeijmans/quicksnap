@@ -29,8 +29,10 @@ mouse_pointer_offsets = [
 
 class QuickVertexSnapOperator(bpy.types.Operator):
     bl_idname = "object.quick_vertex_snap"
-    bl_label = "Quick Vertex Snap"
+    bl_label = "QuickSnap Tool"
     bl_options = {'INTERNAL', 'UNDO'}
+    bl_description = "Quickly snap selection from/to a selected vertex, curve point, object origin, edge midpoint, face" \
+                     " center.\nUse the same keymap to open the tool PIE menu."
 
     def initialize(self, context):
         # Get 'WINDOW' region of the context. Useful when the active context region is UI within the 3DView
@@ -673,13 +675,13 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         default="ALWAYS", )
     display_target_wireframe: bpy.props.BoolProperty(name="Display target object wireframe", default=True)
     display_hover_wireframe: bpy.props.BoolProperty(name="Display mouseover object wireframe", default=True)
-    highlight_target_vertex_edges: bpy.props.BoolProperty(name="Enable highlighting of target vertex edges",
+    highlight_target_vertex_edges: bpy.props.BoolProperty(name="Enable highlighting of target vertex edges*",
                                                           default=True)
     edge_highlight_width: bpy.props.IntProperty(name="Highlight Width", default=2, min=1, max=5)
     edge_highlight_color_source: bpy.props.FloatVectorProperty(
        name="Highlight Color (Selected object)",
        subtype='COLOR',
-       default=(0.0, 1.0, 0.0),
+       default=(1.0, 1.0, 0.0),
        min=0.0, max=1.0
        )
     edge_highlight_color_target: bpy.props.FloatVectorProperty(
@@ -753,14 +755,17 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         col.prop(self, "display_target_wireframe")
         col.prop(self, "display_hover_wireframe")
         col.separator()
-        col.label(text="Target Edge Highlight:")
-        col.prop(self, "highlight_target_vertex_edges")
+        container=col.box().column()
+        container.label(text="Target Edge Highlight (Can have noticeable affect on performances):")
+        # container.use_property_split = False
+        container.prop(self, "highlight_target_vertex_edges")
+        # container.use_property_split = True
         if self.highlight_target_vertex_edges:
-            col.prop(self, "edge_highlight_width")
-            col.prop(self, "edge_highlight_opacity")
-            col.prop(self, "edge_highlight_color_source")
-            col.prop(self, "edge_highlight_color_target")
-        layout.separator()
+            container.prop(self, "edge_highlight_width")
+            container.prop(self, "edge_highlight_opacity")
+            container.prop(self, "edge_highlight_color_source")
+            container.prop(self, "edge_highlight_color_target")
+
         box_content = layout.box()
         header = box_content.row(align=True)
         header.label(text="Keymap", icon='EVENT_A')
@@ -770,14 +775,24 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         key_config = bpy.context.window_manager.keyconfigs.addon
         categories = set([cat for (cat, key) in addon_keymaps])
         id_names = [key.idname for (cat, key) in addon_keymaps]
+        quicksnap_keymap = None
         for cat in categories:
             active_cat = key_config.keymaps.find(cat.name, space_type=cat.space_type,
                                                  region_type=cat.region_type).active()
             for active_key in active_cat.keymap_items:
                 if active_key.idname in id_names:
+                    quicksnap_keymap = active_key
                     quicksnap_utils.display_keymap(active_key, col)
         col.separator()
-        col.label(text="Modifier hotkeys:")
+        col.label(text="QuickSnap hotkeys:")
+        if quicksnap_keymap is not None:
+            quicksnap_utils.insert_ui_hotkey(col, f'EVENT_{quicksnap_keymap.type}',
+                                             "Open PIE menu (Same keymap as the QuickSnap Tool)",
+                                             shift=quicksnap_keymap.shift,
+                                             control=quicksnap_keymap.ctrl,
+                                             alt=quicksnap_keymap.alt,
+                                             )
+
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_X', "Constraint to X Axis")
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_X', "Constraint to X Plane", shift=True)
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_Y', "Constraint to Y Axis")
