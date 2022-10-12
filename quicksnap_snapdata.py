@@ -300,13 +300,8 @@ class SnapData:
             # Add cursor location
             self.add_point(context, bpy.context.scene.cursor.location, mathutils.Matrix.Identity(4), object_index=-1)
 
-        # If we only snap to origins when in "Snap to origin mode", do not add the origins to the normal points kdtrees
-        if self.snap_origins == "ALWAYS":
-            self.kd.balance()
-            self.kd_origins.balance()
-        else:
-            self.kd.balance(insert_start_index)
-            self.kd_origins.balance()
+        self.kd.balance()
+        self.kd_origins.balance()
 
     def add_object_root(self, context, object_name):
         """
@@ -314,7 +309,7 @@ class SnapData:
         """
         # logger.debug(f"Add object root: {object_name}")
         if not self.add_point(context, Vector((0, 0, 0)), bpy.data.objects[object_name].matrix_world,
-                              self.scene_meshes.index(object_name)):
+                              self.scene_meshes.index(object_name), add_to_kd=self.snap_origins == "ALWAYS"):
             return
         insert_index = self.added_points_np-1
         # logger.debug(f"add_object_root: {object_name} - insert index={insert_index}")
@@ -322,7 +317,7 @@ class SnapData:
         self.kd_origins.insert(Vector((self.region_2d[insert_index][0], self.region_2d[insert_index][1], 0)),
                                insert_index)
 
-    def add_point(self, context, vertex_co, world_space_matrix, object_index):
+    def add_point(self, context, vertex_co, world_space_matrix, object_index, add_to_kd=True):
         """
         Add single point to SnapData. Use this for single points: object origins, cursor.
         It is too slow to process large amount of points use ObjectPointData instead.
@@ -345,7 +340,8 @@ class SnapData:
         self.region_2d[current_index] = (coord_2d[0], coord_2d[1], view_space_projection.w*0.00000001)
         self.indices[current_index] = -1
         self.object_id[current_index] = object_index
-        self.kd.insert(self.region_2d[current_index], current_index)
+        if add_to_kd:
+            self.kd.insert(self.region_2d[current_index], current_index)
         self.added_points_np += 1
 
         return True
