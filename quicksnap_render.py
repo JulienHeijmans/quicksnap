@@ -1,4 +1,5 @@
 ﻿import bpy, gpu, blf, bgl, logging
+import numpy as np
 from gpu_extras.batch import batch_for_shader
 from .quicksnap_utils import State
 from mathutils import Vector
@@ -212,6 +213,33 @@ def draw_snap_axis(self, context):
                 end[2] = end[2] - 10 ** 5
                 draw_line_3d(start, end, (0.2, 0.6, 1, 0.6), 1)
 
+indices_bounds = (
+    (0, 1),  (1, 2), (2, 3), (3, 0),
+    (4, 5),  (5, 6), (6, 7), (7, 4),
+    (0, 4),  (1, 5), (2, 6), (3, 7),
+)
+
+
+def draw_bounds(points, color=(1, 1, 0, 1), line_width=3, depth_test=False):
+    if line_width != 1:
+        bgl.glLineWidth(line_width)
+    bgl.glEnable(bgl.GL_BLEND)
+    bgl.glEnable(bgl.GL_LINE_SMOOTH)
+    if depth_test:
+        bgl.glEnable(bgl.GL_DEPTH_TEST)
+    vertices = points
+
+    batch = batch_for_shader(shader_3d_uniform_color, 'LINES', {"pos": vertices}, indices=indices_bounds)
+    shader_3d_uniform_color.bind()
+    shader_3d_uniform_color.uniform_float("color", color)
+    batch.draw(shader_3d_uniform_color)
+    if line_width != 1:
+        bgl.glLineWidth(1)
+    bgl.glDisable(bgl.GL_BLEND)
+    bgl.glDisable(bgl.GL_LINE_SMOOTH)
+    if depth_test:
+        bgl.glDisable(bgl.GL_DEPTH_TEST)
+
 
 def draw_callback_3d(self, context):
     draw_snap_axis(self, context)
@@ -225,7 +253,20 @@ def draw_callback_3d(self, context):
     if self.closest_target_id >= 0 and self.settings.highlight_target_vertex_edges:
         vert_index = self.snapdata_target.indices[self.closest_target_id]
         if vert_index < 0:
+            if self.closest_target_id in self.snapdata_target.origins_map:
+                obj_name = self.snapdata_target.origins_map[self.closest_target_id]
+                if obj_name not in self.target_bounds:
+                    obj = bpy.data.objects[obj_name]
+                    bound_points = [v[:] for v in obj.bound_box]
+
+                    region3d = context.space_data.region_3d
+                    camera_position = region3d.view_matrix.inverted().translation
+                    self.target_bounds[obj_name] = [obj.matrix_world@Vector(point) for point in bound_points]
+                    self.target_bounds[obj_name] = [point + (camera_position-point) * 0.01 for
+                                                    point in self.target_bounds[obj_name]]
+                draw_bounds(self.target_bounds[obj_name], color=(1, 1, 0, 0.8), line_width=1, depth_test=True)
             return
+
         vert_object = bpy.data.objects[self.target_object]
         if vert_object.type != "MESH":
             return
@@ -233,9 +274,7 @@ def draw_callback_3d(self, context):
             self.edge_links[self.target_object] = {}
         if vert_index not in self.edge_links[self.target_object]:
             matrix = vert_object.matrix_world
-            # vert_bmesh.from_mesh(vert_object.data)
             if self.target_object in self.selection_objects:
-                # vert_bmesh.from_mesh(vert_object.data)
                 if self.target_object not in self.target_bmeshs:
                     self.target_bmeshs[self.target_object] = bmesh.from_edit_mesh(vert_object.data)
                 vert_bmesh = self.target_bmeshs[self.target_object]
