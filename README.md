@@ -3,7 +3,7 @@ QuickSnap is a Blender addon to quickly snap objects/vertices/points to object o
 
 Presentation video:
 
-https://user-images.githubusercontent.com/35562774/195337942-d01e1882-6810-46ce-80ed-60c47e0d4909.mp4
+https://user-images.githubusercontent.com/35562774/195340412-6931d8f0-045d-4c4d-badd-96b94ef7f1cc.mp4
 
 If the video is not playing for you, you can watch it here: https://youtu.be/9cWV0JELM88
 
