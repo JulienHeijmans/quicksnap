@@ -15,7 +15,7 @@ shader_3d_uniform_color = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
 shader_3d_smooth_color = gpu.shader.from_builtin('3D_SMOOTH_COLOR')
 
 
-def draw_square_2d(position_x, position_y, size, color=(1, 1, 0, 1), line_width=1, point_width=3):
+def draw_square_2d(position_x, position_y, size, color=(1, 1, 0, 1), line_width=1, point_width=4):
     """
     Draw a 2D square of size {size}, color {color}, line_width, and draw 2D point of width {point_width}
     if line_width==0: Only draw point.
@@ -111,6 +111,23 @@ def draw_line_3d_smooth_blend(source, target, color_a=(1, 0, 0, 1), color_b=(0, 
     batch.draw(shader_3d_smooth_color)
     if line_width != 1:
         bgl.glLineWidth(1)
+    bgl.glDisable(bgl.GL_BLEND)
+    bgl.glDisable(bgl.GL_LINE_SMOOTH)
+    if depth_test:
+        bgl.glDisable(bgl.GL_DEPTH_TEST)
+
+
+def draw_polygon_smooth_blend(points, indices, color, depth_test):
+    bgl.glEnable(bgl.GL_BLEND)
+    bgl.glEnable(bgl.GL_LINE_SMOOTH)
+    if depth_test:
+        bgl.glEnable(bgl.GL_DEPTH_TEST)
+    colors = [color]*len(points)
+    batch = batch_for_shader(shader_3d_smooth_color, 'TRIS', {"pos": points, "color": colors}, indices=indices)
+    shader.uniform_float("color", color)
+    shader_3d_smooth_color.bind()
+    batch.draw(shader_3d_smooth_color)
+
     bgl.glDisable(bgl.GL_BLEND)
     bgl.glDisable(bgl.GL_LINE_SMOOTH)
     if depth_test:
@@ -214,10 +231,11 @@ def draw_snap_axis(self, context):
                 end[2] = end[2] - 10 ** 5
                 draw_line_3d(start, end, (0.2, 0.6, 1, 0.6), 1)
 
+
 indices_bounds = (
-    (0, 1),  (1, 2), (2, 3), (3, 0),
-    (4, 5),  (5, 6), (6, 7), (7, 4),
-    (0, 4),  (1, 5), (2, 6), (3, 7),
+    (0, 1), (1, 2), (2, 3), (3, 0),
+    (4, 5), (5, 6), (6, 7), (7, 4),
+    (0, 4), (1, 5), (2, 6), (3, 7),
 )
 
 
@@ -248,25 +266,38 @@ def draw_callback_3d(self, context):
     coords = [self.snapdata_target.world_space[objectid] for objectid in self.snapdata_target.origins_map]
     if self.snap_to_origins:
         draw_points_3d(coords, point_width=5)
-    else:
+    elif self.settings.snap_objects_origin == 'ALWAYS':
         draw_points_3d(coords, color=(1, 1, 0, 0.5), point_width=3, depth_test=True)
 
     if self.settings.highlight_target_vertex_edges:
         if self.current_state == State.IDLE:
+            draw_face_center(context,
+                             target_object=self.hover_object,
+                             face_index=self.target_face_index,
+                             snap_type=self.snapdata_source.snap_type,
+                             ignore_modifiers=self.settings.ignore_modifiers or not self.object_mode,
+                             color=context.preferences.themes[0].view_3d.object_active
+                             )
             draw_edge_highlight(context,
                                 target_object=self.target_object,
                                 target_id=self.closest_source_id,
                                 snapdata=self.snapdata_source,
-                                edge_links=self.source_edge_links,
-                                bmeshs=self.source_bmeshs,
-                                is_selection=self.target_object in self.selection_objects,
-                                ignore_modifiers=self.settings.ignore_modifiers,
+                                highlight_data=self.source_highlight_data,
+                                npdata=self.source_npdata,
+                                ignore_modifiers=self.settings.ignore_modifiers or not self.object_mode,
                                 width=self.settings.edge_highlight_width,
                                 color=self.settings.edge_highlight_color_source,
                                 opacity=self.settings.edge_highlight_opacity)
 
         elif self.current_state == State.SOURCE_PICKED:
-        	if self.closest_target_id in self.snapdata_target.origins_map:
+            draw_face_center(context,
+                             target_object=self.hover_object,
+                             face_index=self.target_face_index,
+                             snap_type=self.snapdata_target.snap_type,
+                             ignore_modifiers=self.settings.ignore_modifiers or not self.object_mode,
+                             color=context.preferences.themes[0].view_3d.vertex
+                             )
+            if self.closest_target_id in self.snapdata_target.origins_map:
                 obj_name = self.snapdata_target.origins_map[self.closest_target_id]
                 if obj_name not in self.target_bounds:
                     obj = bpy.data.objects[obj_name]
@@ -274,18 +305,18 @@ def draw_callback_3d(self, context):
 
                     region3d = context.space_data.region_3d
                     camera_position = region3d.view_matrix.inverted().translation
-                    self.target_bounds[obj_name] = [obj.matrix_world@Vector(point) for point in bound_points]
-                    self.target_bounds[obj_name] = [point + (camera_position-point) * 0.01 for
+                    self.target_bounds[obj_name] = [obj.matrix_world @ Vector(point) for point in bound_points]
+                    self.target_bounds[obj_name] = [point + (camera_position - point) * 0.01 for
                                                     point in self.target_bounds[obj_name]]
                 draw_bounds(self.target_bounds[obj_name], color=(1, 1, 0, 0.8), line_width=1, depth_test=True)
                 return
+
             draw_edge_highlight(context,
                                 target_object=self.target_object,
                                 target_id=self.closest_target_id,
                                 snapdata=self.snapdata_target,
-                                edge_links=self.target_edge_links,
-                                bmeshs=self.target_bmeshs,
-                                is_selection=self.target_object in self.selection_objects,
+                                highlight_data=self.target_highlight_data,
+                                npdata=self.target_npdata,
                                 ignore_modifiers=self.settings.ignore_modifiers,
                                 width=self.settings.edge_highlight_width,
                                 color=self.settings.edge_highlight_color_target,
@@ -296,9 +327,8 @@ def draw_edge_highlight(context,
                         target_object,
                         target_id,
                         snapdata,
-                        edge_links,
-                        bmeshs,
-                        is_selection,
+                        highlight_data,
+                        npdata,
                         ignore_modifiers,
                         width=2,
                         color=(1, 1, 0),
@@ -306,91 +336,160 @@ def draw_edge_highlight(context,
                         ):
     if target_id >= 0:
         vert_index = snapdata.indices[target_id]
-        if vert_index < 0:            
+        if vert_index < 0:
             return
         vert_object = bpy.data.objects[target_object]
         if vert_object.type != "MESH":
             return
-        if target_object not in edge_links:
-            edge_links[target_object] = {}
-        if vert_index not in edge_links[target_object]:
+        if target_object not in highlight_data:
+            highlight_data[target_object] = {}
+        if vert_index not in highlight_data[target_object]:
             matrix = vert_object.matrix_world
+            if ignore_modifiers:
+                data = vert_object.data
+            else:
+                data = vert_object.evaluated_get(context.evaluated_depsgraph_get()).data
 
             if snapdata.snap_type == 'POINTS':
-                if is_selection:
-                    # vert_bmesh.from_mesh(vert_object.data)
-                    if target_object not in bmeshs:
-                        if vert_object.data.is_editmode:
-                            bmeshs[target_object] = bmesh.from_edit_mesh(vert_object.data)
-                        else:
-                            bmeshs[target_object] = bmesh.new()
-                            bmeshs[target_object].from_mesh(vert_object.data)
-                    vert_bmesh = bmeshs[target_object]
-                else:
-                    if target_object not in bmeshs:
-                        bmeshs[target_object] = bmesh.new()  # create an empty BMesh
-                        if ignore_modifiers:
-                            bmeshs[target_object].from_mesh(vert_object.data)
-                        else:
-                            bmeshs[target_object].from_object(vert_object, context.evaluated_depsgraph_get())
-                    vert_bmesh = bmeshs[target_object]
+                if target_object not in npdata:
+                    npdata[target_object] = {}
+                if "edge_verts" not in npdata[target_object]:
+                    arr = np.zeros(len(data.edges)*2, dtype=np.int)
+                    data.edges.foreach_get('vertices', arr)
+                    arr.shape = (len(data.edges), 2)
+                    npdata[target_object]["edge_verts"] = arr
 
-                verts = vert_bmesh.verts
-                verts.ensure_lookup_table()
-                vert = vert_bmesh.verts[vert_index]
-                edges = vert.link_edges
-                edge_links[target_object][vert_index] = []
-                for edge in edges:
-                    if edge.verts[0] == vert:
-                        first_vert = 0
-                        second_vert = 1
-                    else:
-                        first_vert = 1
-                        second_vert = 0
-                    edge_links[target_object][vert_index].append((matrix @ edge.verts[first_vert].co,
-                                                                  matrix @ edge.verts[second_vert].co))
+                filter_left = npdata[target_object]["edge_verts"][npdata[target_object]["edge_verts"][:, 0] == vert_index]
+                filter_right = npdata[target_object]["edge_verts"][npdata[target_object]["edge_verts"][:, 1] == vert_index]
+                highlight_data[target_object][vert_index] = {}
+                highlight_data[target_object][vert_index]["edges"] = []
+                for match in filter_left:
+                    highlight_data[target_object][vert_index]["edges"].append((matrix @ data.vertices[match[0]].co,
+                                                                               matrix @ data.vertices[match[1]].co))
+                for match in filter_right:
+                    highlight_data[target_object][vert_index]["edges"].append((matrix @ data.vertices[match[1]].co,
+                                                                               matrix @ data.vertices[match[0]].co))
+            elif snapdata.snap_type == 'MIDPOINTS':
+                verts = data.vertices
+                edges = data.edges
+                highlight_data[target_object][vert_index] = {}
+                highlight_data[target_object][vert_index]["edges"] = []
+                highlight_data[target_object][vert_index]["edges"].append(
+                    (snapdata.world_space[target_id],
+                     matrix @ verts[edges[vert_index].vertices[0]].co))
+                highlight_data[target_object][vert_index]["edges"].append(
+                    (snapdata.world_space[target_id],
+                     matrix @ verts[edges[vert_index].vertices[1]].co))
 
-            else:
-                if is_selection:
-                    data = vert_object.data
-                else:
-                    if ignore_modifiers:
-                        data = vert_object.data
-                    else:
-                        data = vert_object.evaluated_get(context.evaluated_depsgraph_get()).data
+            elif snapdata.snap_type == 'FACES':
+                if target_object not in npdata:
+                    npdata[target_object] = {}
+                if "polygon_loop_tri_idx" not in npdata[target_object]:
+                    data.calc_loop_triangles()
+                    arr = np.zeros(len(data.loop_triangles), dtype=np.int)
+                    data.loop_triangles.foreach_get('polygon_index', arr)
+                    npdata[target_object]["polygon_loop_tri_idx"] = arr
+                    arr2 = np.zeros(len(data.loop_triangles)*3, dtype=np.int)
+                    data.loop_triangles.foreach_get('vertices', arr2)
+                    arr2.shape = (len(data.loop_triangles), 3)
+                    npdata[target_object]["polygon_loop_verts"] = arr2
 
-                if snapdata.snap_type == 'MIDPOINTS':
-                    verts = data.vertices
-                    edges = data.edges
-                    edge_links[target_object][vert_index] = []
-                    edge_links[target_object][vert_index].append(
-                        (snapdata.world_space[target_id],
-                         matrix @ verts[edges[vert_index].vertices[0]].co))
-                    edge_links[target_object][vert_index].append(
-                        (snapdata.world_space[target_id],
-                         matrix @ verts[edges[vert_index].vertices[1]].co))
+                verts = data.vertices
+                polygons = data.polygons
+                loops = data.loops
+                highlight_data[target_object][vert_index] = {}
+                highlight_data[target_object][vert_index]["edges"] = []
+                highlight_data[target_object][vert_index]["face_co"] = []
+                highlight_data[target_object][vert_index]["face_indices"] = []
+                poly = polygons[vert_index]
+                region3d = context.space_data.region_3d
+                camera_position = region3d.view_matrix.inverted().translation
 
-                elif snapdata.snap_type == 'FACES':
-                    verts = data.vertices
-                    polygons = data.polygons
-                    loops = data.loops
-                    edge_links[target_object][vert_index] = []
-                    poly = polygons[vert_index]
-                    for idx in range(0, poly.loop_total):
-                        current_loop = poly.loop_start + idx
-                        loop_second = poly.loop_start + ((idx + 1) % poly.loop_total)
-                        edge_links[target_object][vert_index].append(
-                            (matrix @ verts[loops[current_loop].vertex_index].co,
-                             matrix @ verts[loops[loop_second].vertex_index].co))
+                verts_co = {}
+                vert_local_index = {}
+                for idx in range(0, poly.loop_total):
+                    current_loop = poly.loop_start + idx
+                    loop_second = poly.loop_start + ((idx + 1) % poly.loop_total)
+                    vert_index_a = loops[current_loop].vertex_index
+                    vert_index_b = loops[loop_second].vertex_index
+                    if vert_index_a not in verts_co:
+                        verts_co[vert_index_a] = matrix @ verts[vert_index_a].co
+                        verts_co[vert_index_a] = verts_co[vert_index_a]+(camera_position - verts_co[vert_index_a]) * 0.01
+                        new_index = len(highlight_data[target_object][vert_index]["face_co"])
+                        vert_local_index[vert_index_a] = new_index
+                        highlight_data[target_object][vert_index]["face_co"].append(verts_co[vert_index_a])
+                    if vert_index_b not in verts_co:
+                        verts_co[vert_index_b] = matrix @ verts[vert_index_b].co
+                        verts_co[vert_index_b] = verts_co[vert_index_b]+(camera_position - verts_co[vert_index_b]) * 0.01
+                        new_index = len(highlight_data[target_object][vert_index]["face_co"])
+                        vert_local_index[vert_index_b] = new_index
+                        highlight_data[target_object][vert_index]["face_co"].append(verts_co[vert_index_b])
+                    highlight_data[target_object][vert_index]["edges"] .append(
+                        (verts_co[vert_index_a], verts_co[vert_index_b]))
+
+                filtered = np.argwhere(npdata[target_object]["polygon_loop_tri_idx"] == vert_index)
+                for triangle_index in filtered:
+                    triangle = npdata[target_object]["polygon_loop_verts"][triangle_index].flatten()
+                    highlight_data[target_object][vert_index]["face_indices"].extend(
+                        [[vert_local_index[vertid] for vertid in triangle]])
+
 
         if snapdata.snap_type == 'POINTS':
             alpha_end = 0
         else:
             alpha_end = opacity
 
-        for edge in edge_links[target_object][vert_index]:
+        for edge in highlight_data[target_object][vert_index]["edges"]:
             draw_line_3d_smooth_blend(edge[0],
                                       edge[1],
                                       color_a=(*color, opacity),
                                       color_b=(*color, alpha_end),
                                       line_width=width, depth_test=False)
+        if snapdata.snap_type == 'FACES':
+
+            draw_polygon_smooth_blend(highlight_data[target_object][vert_index]["face_co"],
+                                      highlight_data[target_object][vert_index]["face_indices"],
+                                      color=(*color, 0.1),
+                                      depth_test=True)
+
+
+def draw_face_center(context,
+                     target_object,
+                     face_index,
+                     snap_type,
+                     ignore_modifiers,
+                     color):
+
+    if face_index < 0 or snap_type == 'POINTS' or target_object=='':
+        return
+
+    obj = bpy.data.objects[target_object]
+    if obj.type != 'MESH':
+        return
+
+    print(f"draw_face_center - ignore modifier={ignore_modifiers}")
+    if ignore_modifiers:
+        data = obj.data
+    else:
+        data = obj.evaluated_get(context.evaluated_depsgraph_get()).data
+
+    if snap_type == 'FACES':
+        target_polygon = data.polygons[face_index]
+        center = obj.matrix_world @ target_polygon.center
+        region3d = context.space_data.region_3d
+        camera_position = region3d.view_matrix.inverted().translation
+
+        draw_points_3d([center + (camera_position - center) * 0.01], color=(*color, 1), point_width=4, depth_test=True)
+
+    elif snap_type == 'MIDPOINTS':
+        target_polygon = data.polygons[face_index]
+        camera_position = context.space_data.region_3d.view_matrix.inverted().translation
+        midpoints=[]
+        for loop_index in range(0, target_polygon.loop_total):
+            current_loop = data.loops[target_polygon.loop_start + loop_index]
+            loop_second = data.loops[target_polygon.loop_start + ((loop_index + 1) % target_polygon.loop_total)]
+            midpoint = obj.matrix_world@((data.vertices[current_loop.vertex_index].co +
+                                          data.vertices[loop_second.vertex_index].co)/2)
+            midpoints.append(midpoint+(camera_position - midpoint) * 0.01)
+        draw_points_3d(midpoints, color=(*color, 1), point_width=4, depth_test=True)
+

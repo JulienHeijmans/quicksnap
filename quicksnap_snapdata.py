@@ -308,7 +308,7 @@ class SnapData:
                 # logger.debug(f"add_object_data:{object_name} - First add - is origin:{self.is_origin_snapdata}")
                 if self.is_origin_snapdata:
                     current_mode = quicksnap_utils.set_object_mode_if_needed()
-                if self.object_mode:
+                if self.object_mode and not self.settings.ignore_modifiers:
                     obj = bpy.data.objects[object_name].evaluated_get(depsgraph)
                 else:
                     obj = bpy.data.objects[object_name]
