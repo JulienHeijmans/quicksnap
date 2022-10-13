@@ -66,7 +66,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                 self.mouse_position)
         self.perspective_matrix = context.space_data.region_3d.perspective_matrix
         self.perspective_matrix_inverse = self.perspective_matrix.inverted()
-        self.target_edge_links = {}
+        self.edge_links = {}
+        self.target_bounds = {}
         self.target_bmeshs = {}
         self.target_object_display_backup = {}
         self.source_edge_links = {}
@@ -136,7 +137,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             bpy.data.objects[target_object].show_wire = self.settings.display_target_wireframe or \
                                                         self.target_object_display_backup[target_object][0]
             if is_root:
-                bpy.data.objects[target_object].show_bounds = True
                 bpy.data.objects[target_object].show_name = True
 
         self.target_object = target_object
@@ -247,8 +247,9 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             else:  # Snapping to all verts/points
 
                 # First hide the selection mesh not to raycast against it.
-                for obj in self.selection_objects:
-                    bpy.data.objects[obj].hide_set(True)
+                selected_objs = [bpy.data.objects[obj] for obj in self.selection_objects]
+                for obj in selected_objs:
+                    obj.hide_set(True)
 
                 # Now we will search for other objects to process around the mouse.
                 for obj in self.snapdata_target.processed:  # Hide already processed meshes
@@ -260,6 +261,10 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     bpy.data.objects[obj].hide_set(False)
                 # Add the close objects to the to-process list
                 for obj in close_objects:
+                    if self.object_mode and quicksnap_utils.has_parent(obj, selected_objs):
+                        if obj.name not in self.snapdata_target.processed:
+                            self.snapdata_target.processed.add(obj.name)
+                        continue
                     self.snapdata_target.add_object_data(obj.name, depsgraph=depsgraph,
                                                          set_first_priority=True)
 
@@ -269,8 +274,13 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                                      direction=self.mouse_vector)
                 if direct_hit:
                     hover_object = direct_hit_object.name
-                    self.snapdata_target.add_object_data(direct_hit_object.name, depsgraph=depsgraph,
-                                                         set_first_priority=True)
+
+                    if self.object_mode and quicksnap_utils.has_parent(direct_hit_object, selected_objs):
+                        if direct_hit_object.name not in self.snapdata_target.processed:
+                            self.snapdata_target.processed.add(direct_hit_object.name)
+                    else:
+                        self.snapdata_target.add_object_data(direct_hit_object.name, depsgraph=depsgraph,
+                                                             set_first_priority=True)
 
                 # Revert hidden objects
                 for obj in self.selection_objects:
@@ -359,7 +369,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.hotkey_shift = True
         self.menu_open = False
         self.hover_object = ""
-        self.target_edge_links = None
+        self.edge_links = None
+        self.target_bounds = None
         self.target_bmeshs = None
         self.source_edge_links = None
         self.source_bmeshs = None
@@ -413,6 +424,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         # logger.info("refresh data")
         region3d = context.space_data.region_3d
         self.camera_position = region3d.view_matrix.inverted().translation
+        self.target_bounds = {}
         self.perspective_matrix = context.space_data.region_3d.perspective_matrix
         self.perspective_matrix_inverse = self.perspective_matrix.inverted()
         if self.current_state == State.IDLE:

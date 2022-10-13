@@ -257,6 +257,7 @@ class SnapData:
 
         # Add initial objects for target destination.
         if not self.is_origin_snapdata:
+            selected_objs = [bpy.data.objects[obj] for obj in selected_meshes]
             # If Snapdata contains target points and we are in edit mode, add all selected meshes to
             # target objects lists (for snapping to unselected verts).
             if not self.object_mode:
@@ -266,6 +267,10 @@ class SnapData:
             # Add meshes that do not have polygons. (cannot be found via ray-cast)
             for object_name in scene_meshes:
                 obj = bpy.data.objects[object_name]
+                if self.object_mode and quicksnap_utils.has_parent(obj, selected_objs):  # Do not add child objs
+                    if obj.name not in self.processed:
+                        self.processed.add(obj.name)
+                    continue
                 if object_name not in selected_meshes and (
                         obj.type == 'CURVE' or (obj.type == 'MESH' and len(obj.data.vertices) > 0 and len(obj.data.polygons) == 0)):
                     self.add_object_data(object_name, depsgraph=depsgraph)
@@ -367,12 +372,15 @@ class SnapData:
         # Target SnapData: Add selection origins only when we are not in object mode.
         # and add all non-selected objects origins, as well as cursor location.
         else:
-            if bpy.context.active_object.mode != 'OBJECT':
+            if not self.object_mode:
                 add_roots = scene_meshes
                 add_roots.extend(selected_meshes)
                 add_roots = set(add_roots)
             else:
-                add_roots = [object_name for object_name in scene_meshes if object_name not in selected_meshes]
+                selected_objs = [bpy.data.objects[obj_name] for obj_name in selected_meshes]
+                add_roots = [object_name for object_name in scene_meshes if
+                             object_name not in selected_meshes and
+                             not quicksnap_utils.has_parent(bpy.data.objects[object_name], selected_objs)]
             # logger.debug(f"add_scene_roots: {len(add_roots)}")
             for object_name in add_roots:
                 self.add_object_root(context, object_name)
