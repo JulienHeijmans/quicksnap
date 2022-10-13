@@ -45,7 +45,6 @@ class ObjectPointData:
 
         # Gather object space points coordinates from the mesh/curves data
         if obj.type == 'MESH':
-            print(f"Snap type:{snap_type}")
             if snap_type == 'POINTS':
                 vertices = obj.data.vertices
                 max_count = len(vertices)
@@ -203,10 +202,8 @@ class SnapData:
         self.is_origin_snapdata = scene_meshes is None
         if self.is_origin_snapdata:
             self.snap_type = settings.snap_source_type
-            print(f"new origin snapdata. type={self.snap_type}")
         else:
             self.snap_type = settings.snap_target_type
-            print(f"new target snapdata. type={self.snap_type}")
         self.keep_processing = True
         self.width_half = region.width / 2.0
         self.height_half = region.height / 2.0

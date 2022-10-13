@@ -201,52 +201,17 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         depsgraph = context.evaluated_depsgraph_get()
         hover_object = ""
         if self.current_state == State.IDLE:
-            hit_complete = False
-            hidden = []
-            # If we ignore modifiers, we might need to raycast a second time per object, without modifiers)
-            while not hit_complete:
-                hover_object = ""
-                # Find object under the mouse
-                (direct_hit, _, _,  self.target_face_index, direct_hit_object, _) = context.scene.ray_cast(context.evaluated_depsgraph_get(),
-                                                                                     origin=self.camera_position,
-                                                                                     direction=self.mouse_vector)
-
-                # If found, we push this object on top of the stack of objects to process
-                if direct_hit and direct_hit_object.name in self.selection_objects:
-                        self.snapdata_source.add_object_data(direct_hit_object.name,
-                                                             depsgraph=depsgraph,
-                                                             is_selected=True,
-                                                             set_first_priority=True)
-                        print(f"selected object hit: {direct_hit_object.name}")
-                        # If direct hit is selected object and we ignore modifier, raycast without modifier.
-                        if self.settings.ignore_modifiers or not self.object_mode:
-                            print("selected object hit =>testing without modifiers")
-                            matrix_world_inverted=direct_hit_object.matrix_world.copy().inverted()
-                            local_origin = matrix_world_inverted @ self.camera_position
-                            local_direction = (matrix_world_inverted @ self.mouse_vector).normalized()
-                            (direct_hit, _, _, self.target_face_index) = direct_hit_object.ray_cast(
-                                origin=local_origin,
-                                direction=local_direction)
-                            if direct_hit:
-                                print("selected object hit wihtout modifier. Hit complete")
-                                hit_complete = True
-                                hover_object = direct_hit_object.name
-                                direct_hit_object.data.calc_loop_triangles()
-                            else:
-                                print("selected object not hit without modifier. additional raycast")
-                                direct_hit_object.hide_set(True)
-                                hidden.append(direct_hit_object)
-                        else:
-                            print("selected object hit =>No reason to test without modifiers")
-                            hover_object = direct_hit_object.name
-                            hit_complete = True
-                else:
-                    print(f"No more it. hit_complete")
-                    hit_complete=True
-
-            for obj in hidden:
-                obj.hide_set(False)
-                obj.select_set(True)
+            # Find object under the mouse
+            (direct_hit, _, _, self.target_face_index, direct_hit_object, _) = context.scene.ray_cast(context.evaluated_depsgraph_get(),
+                                                                                 origin=self.camera_position,
+                                                                                 direction=self.mouse_vector)
+            # If found, we push this object on top of the stack of objects to process
+            if direct_hit and direct_hit_object.name in self.selection_objects:
+                hover_object = direct_hit_object.name
+                self.snapdata_source.add_object_data(direct_hit_object.name,
+                                                     depsgraph=depsgraph,
+                                                     is_selected=True,
+                                                     set_first_priority=True)
 
             # Find source vert/point the closest to the mouse, change cursor crosshair
             closest = self.snapdata_source.find_closest(mouse_coord_screen_flat,
@@ -304,53 +269,22 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                         continue
                     self.snapdata_target.add_object_data(obj.name, depsgraph=depsgraph,
                                                          set_first_priority=True)
-                hit_complete = False
-                hidden = []
-                # If we ignore modifiers, we might need to raycast a second time per object, without modifiers)
-                while not hit_complete:
-                    hover_object = ""
-                    # Look for object under the mouse, if found, bring it in top of the list of objects to process.
-                    (direct_hit, _, _, self.target_face_index, direct_hit_object, _) = context.scene.ray_cast(depsgraph,
-                                                                                         origin=self.camera_position,
-                                                                                         direction=self.mouse_vector)
-                    if direct_hit:
-                        print(f"object hit: {direct_hit_object.name}")
-                        # If direct hit is selected object and we ignore modifier, raycast without modifier.
-                        if self.ignore_modifiers or direct_hit_object.name in self.selection_objects and not self.object_mode:
-                            origin=direct_hit_object.matrix_world.inverted() @ self.camera_position
-                            direction=(direct_hit_object.matrix_world.inverted() @ self.mouse_vector).normalized()
-                            print(f"origin= {origin} - direction={direction}")
-                            (direct_hit, _, _, self.target_face_index) = direct_hit_object.ray_cast(
-                                origin=origin,
-                                direction=direction)
-                            print("object hit =>testing without modifiers")
-                            if direct_hit:
-                                print("object hit without modifiers")
-                                hit_complete=True
-                                hover_object = direct_hit_object.name
-                            else:
-                                print("object NOT hit without modifiers. looping")
-                                direct_hit_object.hide_set(True)
-                                hidden.append(direct_hit_object)
-                        else:
-                            hit_complete = True
-                            hover_object = direct_hit_object.name
 
-                        if self.object_mode and quicksnap_utils.has_parent(direct_hit_object, selected_objs):
-                            if direct_hit_object.name not in self.snapdata_target.processed:
-                                self.snapdata_target.processed.add(direct_hit_object.name)
+                # Look for object under the mouse, if found, bring it in top of the list of objects to process.
+                (direct_hit, _, _, self.target_face_index, direct_hit_object, _) = context.scene.ray_cast(depsgraph,
+                                                                                     origin=self.camera_position,
+                                                                                     direction=self.mouse_vector)
+                if direct_hit:
+                    hover_object = direct_hit_object.name
+
+                    if self.object_mode and quicksnap_utils.has_parent(direct_hit_object, selected_objs):
+                        if direct_hit_object.name not in self.snapdata_target.processed:
+                            self.snapdata_target.processed.add(direct_hit_object.name)
                         else:
                             self.snapdata_target.add_object_data(direct_hit_object.name, depsgraph=depsgraph,
                                                                  set_first_priority=True)
-                    else:
-                        hit_complete = True
-                if hover_object!="":
-                    print(f"hover_object={hover_object} - Face index={self.target_face_index}")
-                else:
-                    print(f"NO hover_object")
+
                 # Revert hidden objects
-                for obj in hidden:
-                    obj.hide_set(False)
                 for obj in self.selection_objects:
                     bpy.data.objects[obj].hide_set(False)
                 for obj in self.selection_objects:  # re-select selection that might be lost in previous steps
