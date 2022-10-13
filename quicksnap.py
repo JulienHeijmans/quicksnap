@@ -73,6 +73,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.target_object_display_backup = {}
         self.source_highlight_data = {}
         self.target_highlight_data = {}
+        self.source_allowed_indices = {}
+        self.target_allowed_indices = {}
         self.source_npdata = {}
         self.backup_data(context)
         self.update(context, region)
@@ -375,7 +377,9 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.hover_object = ""
         self.target_bounds = None
         self.source_highlight_data = None
+        self.source_allowed_indices = None
         self.target_highlight_data = None
+        self.target_allowed_indices = None
         self.source_npdata = None
         self.target_npdata = None
         self.backup_curve_points = None
@@ -431,6 +435,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.target_bounds = {}
         self.source_highlight_data = {}
         self.target_highlight_data = {}
+        self.source_allowed_indices = {}
+        self.target_allowed_indices = {}
         self.perspective_matrix = context.space_data.region_3d.perspective_matrix
         self.perspective_matrix_inverse = self.perspective_matrix.inverted()
         if self.current_state == State.IDLE:
@@ -647,21 +653,23 @@ class QuickVertexSnapOperator(bpy.types.Operator):
     def handle_pie_menu_closed(self, context, event, region):
         if self.settings.snap_source_type != self.snapdata_source.snap_type or \
                 self.ignore_modifiers != self.settings.ignore_modifiers:
-            print("Reinit source")
 
             self.snapdata_source.__init__(context, region, self.settings, self.selection_objects)
             self.source_highlight_data = {}
             self.target_highlight_data = {}
+            self.source_allowed_indices = {}
+            self.target_allowed_indices = {}
             self.source_npdata = {}
             self.target_npdata = {}
         if self.settings.snap_target_type != self.snapdata_target.snap_type or \
                 self.ignore_modifiers != self.settings.ignore_modifiers:
-            print("Reinit target")
             self.snapdata_target.is_enabled = False
             self.snapdata_target.__init__(context, region, self.settings, self.selection_objects,
                                           quicksnap_utils.get_scene_objects(True))
             self.source_highlight_data = {}
             self.target_highlight_data = {}
+            self.source_allowed_indices = {}
+            self.target_allowed_indices = {}
             self.source_npdata = {}
             self.target_npdata = {}
         self.ignore_modifiers = self.settings.ignore_modifiers
@@ -719,6 +727,8 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         min=0.0, max=1.0
     )
     edge_highlight_opacity: bpy.props.FloatProperty(name="Highlight Opacity", default=1, min=0, max=1)
+    display_potential_target_points: bpy.props.BoolProperty(name="Display near edge midpoints/face centers*"
+                                                            ,default=True)
     ignore_modifiers: bpy.props.BoolProperty(name="Ignore modifiers (For heavy scenes)", default=False)
 
     snap_source_type: bpy.props.EnumProperty(
@@ -782,9 +792,10 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         col.prop(self, "draw_rubberband")
         col.prop(self, "display_target_wireframe")
         col.prop(self, "display_hover_wireframe")
+        col.prop(self, "display_potential_target_points")
         col.separator()
         container=col.box().column()
-        container.label(text="Target Edge Highlight (Can have noticeable affect on performances):")
+        container.label(text="Target Edge Highlight*:")
         # container.use_property_split = False
         container.prop(self, "highlight_target_vertex_edges")
         # container.use_property_split = True
@@ -794,6 +805,7 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
             container.prop(self, "edge_highlight_color_source")
             container.prop(self, "edge_highlight_color_target")
 
+        col.label(text="*Can noticeably impact performances")
         box_content = layout.box()
         header = box_content.row(align=True)
         header.label(text="Keymap", icon='EVENT_A')

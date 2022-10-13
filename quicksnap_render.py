@@ -269,40 +269,53 @@ def draw_callback_3d(self, context):
     elif self.settings.snap_objects_origin == 'ALWAYS':
         draw_points_3d(coords, color=(1, 1, 0, 0.5), point_width=3, depth_test=True)
 
-    if self.settings.highlight_target_vertex_edges:
+    if self.settings.highlight_target_vertex_edges or self.settings.display_potential_target_points:
         if self.current_state == State.IDLE:
-            if not self.settings.ignore_modifiers:
+            if not self.settings.ignore_modifiers and self.hover_object != '' and \
+                    self.settings.display_potential_target_points:
+                if self.hover_object not in self.source_allowed_indices:
+                    allowed_indices = self.snapdata_source.indices[:self.snapdata_source.added_points_np]
+                    object_indices = self.snapdata_source.object_id[:self.snapdata_source.added_points_np]
+                    self.source_allowed_indices[self.hover_object] = allowed_indices[
+                        object_indices == self.snapdata_source.scene_meshes.index(self.hover_object)]
                 draw_face_center(context,
                                  target_object=self.hover_object,
                                  face_index=self.target_face_index,
-                                 allowed_indices=self.snapdata_source.indices[:self.snapdata_source.added_points_np],
+                                 allowed_indices=self.source_allowed_indices[self.hover_object],
                                  snap_type=self.snapdata_source.snap_type,
                                  ignore_modifiers=self.settings.ignore_modifiers or not self.object_mode,
                                  color=context.preferences.themes[0].view_3d.object_active
                                  )
-            draw_edge_highlight(context,
-                                target_object=self.target_object,
-                                target_id=self.closest_source_id,
-                                snapdata=self.snapdata_source,
-                                highlight_data=self.source_highlight_data,
-                                npdata=self.source_npdata,
-                                ignore_modifiers=self.settings.ignore_modifiers or not self.object_mode,
-                                width=self.settings.edge_highlight_width,
-                                color=self.settings.edge_highlight_color_source,
-                                opacity=self.settings.edge_highlight_opacity)
+            if self.settings.highlight_target_vertex_edges:
+                draw_edge_highlight(context,
+                                    target_object=self.target_object,
+                                    target_id=self.closest_source_id,
+                                    snapdata=self.snapdata_source,
+                                    highlight_data=self.source_highlight_data,
+                                    npdata=self.source_npdata,
+                                    ignore_modifiers=self.settings.ignore_modifiers or not self.object_mode,
+                                    width=self.settings.edge_highlight_width,
+                                    color=self.settings.edge_highlight_color_source,
+                                    opacity=self.settings.edge_highlight_opacity)
 
         elif self.current_state == State.SOURCE_PICKED:
             if not self.settings.ignore_modifiers:
-                if self.hover_object != '':
-                    allowed_indices = self.snapdata_target.indices[:self.snapdata_target.added_points_np]
-                    object_indices = self.snapdata_target.object_id[:self.snapdata_target.added_points_np]
-                    allowed_indices = allowed_indices[object_indices == self.snapdata_target.scene_meshes.index(self.hover_object)]
+                if self.hover_object != '' and self.settings.display_potential_target_points:
+                    is_selection = self.hover_object in self.selection_objects
+                    if self.hover_object not in self.target_allowed_indices:
+                        if is_selection:
+                            allowed_indices = self.snapdata_target.indices[:self.snapdata_target.added_points_np]
+                            object_indices = self.snapdata_target.object_id[:self.snapdata_target.added_points_np]
+                            self.target_allowed_indices[self.hover_object] = \
+                                allowed_indices[object_indices == self.snapdata_target.scene_meshes.index(self.hover_object)]
+                        else:
+                            self.target_allowed_indices[self.hover_object] = None
                     draw_face_center(context,
                                      target_object=self.hover_object,
                                      face_index=self.target_face_index,
-                                     allowed_indices=allowed_indices,
+                                     allowed_indices=self.target_allowed_indices[self.hover_object],
                                      snap_type=self.snapdata_target.snap_type,
-                                     ignore_modifiers=self.settings.ignore_modifiers or not self.object_mode,
+                                     ignore_modifiers=self.settings.ignore_modifiers or (is_selection and not self.object_mode),
                                      color=context.preferences.themes[0].view_3d.vertex
                                      )
             if self.closest_target_id in self.snapdata_target.origins_map:
@@ -318,17 +331,17 @@ def draw_callback_3d(self, context):
                                                     point in self.target_bounds[obj_name]]
                 draw_bounds(self.target_bounds[obj_name], color=(1, 1, 0, 0.8), line_width=1, depth_test=True)
                 return
-
-            draw_edge_highlight(context,
-                                target_object=self.target_object,
-                                target_id=self.closest_target_id,
-                                snapdata=self.snapdata_target,
-                                highlight_data=self.target_highlight_data,
-                                npdata=self.target_npdata,
-                                ignore_modifiers=self.settings.ignore_modifiers or (self.target_object in self.selection_objects and not self.object_mode),
-                                width=self.settings.edge_highlight_width,
-                                color=self.settings.edge_highlight_color_target,
-                                opacity=self.settings.edge_highlight_opacity)
+            if self.settings.highlight_target_vertex_edges:
+                draw_edge_highlight(context,
+                                    target_object=self.target_object,
+                                    target_id=self.closest_target_id,
+                                    snapdata=self.snapdata_target,
+                                    highlight_data=self.target_highlight_data,
+                                    npdata=self.target_npdata,
+                                    ignore_modifiers=self.settings.ignore_modifiers or (self.target_object in self.selection_objects and not self.object_mode),
+                                    width=self.settings.edge_highlight_width,
+                                    color=self.settings.edge_highlight_color_target,
+                                    opacity=self.settings.edge_highlight_opacity)
 
 
 def draw_edge_highlight(context,
@@ -484,8 +497,8 @@ def draw_face_center(context,
     if snap_type == 'FACES':
         # and face_index in allowed_indices
         # print(f"face index:{face_index}")
-        # print(f"allowed_indices:{allowed_indices}")
-        if face_index < len(data.polygons) and face_index in allowed_indices:
+        # print(f"len(data.polygons):{len(data.polygons)}")
+        if face_index < len(data.polygons) and (allowed_indices is None or face_index in allowed_indices):
             target_polygon = data.polygons[face_index]
             center = obj.matrix_world @ target_polygon.center
             region3d = context.space_data.region_3d
@@ -494,14 +507,17 @@ def draw_face_center(context,
             draw_points_3d([center + (camera_position - center) * 0.01], color=(*color, 1), point_width=4, depth_test=True)
 
     elif snap_type == 'MIDPOINTS':
-        target_polygon = data.polygons[face_index]
-        camera_position = context.space_data.region_3d.view_matrix.inverted().translation
-        midpoints=[]
-        for loop_index in range(0, target_polygon.loop_total):
-            current_loop = data.loops[target_polygon.loop_start + loop_index]
-            loop_second = data.loops[target_polygon.loop_start + ((loop_index + 1) % target_polygon.loop_total)]
-            midpoint = obj.matrix_world@((data.vertices[current_loop.vertex_index].co +
-                                          data.vertices[loop_second.vertex_index].co)/2)
-            midpoints.append(midpoint+(camera_position - midpoint) * 0.01)
-        draw_points_3d(midpoints, color=(*color, 1), point_width=4, depth_test=True)
+        if face_index < len(data.polygons):
+            target_polygon = data.polygons[face_index]
+            camera_position = context.space_data.region_3d.view_matrix.inverted().translation
+            midpoints=[]
+            for loop_index in range(0, target_polygon.loop_total):
+                current_loop = data.loops[target_polygon.loop_start + loop_index]
+                if allowed_indices is not None and current_loop.edge_index not in allowed_indices:
+                    continue
+                loop_second = data.loops[target_polygon.loop_start + ((loop_index + 1) % target_polygon.loop_total)]
+                midpoint = obj.matrix_world@((data.vertices[current_loop.vertex_index].co +
+                                              data.vertices[loop_second.vertex_index].co)/2)
+                midpoints.append(midpoint+(camera_position - midpoint) * 0.01)
+            draw_points_3d(midpoints, color=(*color, 1), point_width=4, depth_test=True)
 
