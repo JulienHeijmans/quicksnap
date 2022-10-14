@@ -22,7 +22,7 @@ If the video is not playing for you, you can watch it here: https://youtu.be/9cW
 
 
 ## Installation
-1. Download Code > Download Zip to download the addon on your computer
+1. Click on the green button Code > Download Zip to download the addon on your computer
 
 ![image](https://user-images.githubusercontent.com/35562774/193323385-b0df72d3-ca22-4ab9-ba60-29ff64eea0a0.png)
 
