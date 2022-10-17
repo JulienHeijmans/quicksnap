@@ -429,8 +429,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         """
         Re-Init the snapdata if the view camera moved. (Updates 2d positions of all points)
         """
-        # logger.info("refresh data")
         region3d = context.space_data.region_3d
+        if self.camera_position == region3d.view_matrix.inverted().translation \
+                and self.perspective_matrix == region3d.perspective_matrix:
+            return
+        logger.info("refresh data")
         self.camera_position = region3d.view_matrix.inverted().translation
         self.target_bounds = {}
         self.source_highlight_data = {}
@@ -452,7 +455,9 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         for area_region in context.area.regions:
             if area_region.type == 'WINDOW':
                 region = area_region
-
+        if self.current_state == State.IDLE and event.type not in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE',
+                                                                   'TIMER'}:
+            self.refresh_vertex_data(context, region)
         snapdata_updated = False
         if self.current_state == State.IDLE:
             snapdata_updated = snapdata_updated or self.snapdata_source.process_iteration(context)
@@ -482,16 +487,12 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 self.handle_pie_menu_closed(context,event,region)
                 self.menu_open = False
             self.update_mouse_position(context, event)
-            if self.camera_moved:
-                self.refresh_vertex_data(context, region)
-                self.camera_moved = False
             self.update(context, region)
             self.apply(context, region)
             self.update_header(context)
 
         # Allow navigation
         if self.current_state == State.IDLE and event.type in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
-            self.camera_moved = True
             return {'PASS_THROUGH'}
 
         return {'RUNNING_MODAL'}

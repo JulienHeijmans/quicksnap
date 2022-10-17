@@ -286,6 +286,19 @@ def draw_callback_3d(self, context):
                                  ignore_modifiers=self.settings.ignore_modifiers or not self.object_mode,
                                  color=context.preferences.themes[0].view_3d.object_active
                                  )
+            if self.closest_source_id in self.snapdata_source.origins_map:
+                obj_name = self.snapdata_source.origins_map[self.closest_source_id]
+                if obj_name not in self.target_bounds:
+                    obj = bpy.data.objects[obj_name]
+                    bound_points = [v[:] for v in obj.bound_box]
+
+                    region3d = context.space_data.region_3d
+                    camera_position = region3d.view_matrix.inverted().translation
+                    self.target_bounds[obj_name] = [obj.matrix_world @ Vector(point) for point in bound_points]
+                    self.target_bounds[obj_name] = [point + (camera_position - point) * 0.01 for
+                                                    point in self.target_bounds[obj_name]]
+                draw_bounds(self.target_bounds[obj_name], color=(1, 1, 0, 0.8), line_width=1, depth_test=True)
+                return
             if self.settings.highlight_target_vertex_edges:
                 draw_edge_highlight(context,
                                     target_object=self.target_object,

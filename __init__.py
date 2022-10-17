@@ -7,7 +7,7 @@ bl_info = {
     "name": "QuickSnap",
     "author": "Julien Heijmans",
     "blender": (2, 80, 0),
-    'version': (1, 2, 6),
+    'version': (1, 3, 0),
     "category": "3D View",
     "description": "Quickly snap objects/vertices/curve points",
     "warning": "",
@@ -50,8 +50,8 @@ def unregister():
 
 logger = logging.getLogger(__name__)
 logger.handlers = []
-# logger.setLevel(logging.DEBUG)
-logger.setLevel(logging.NOTSET)
+logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.NOTSET)
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(fmt=logging.Formatter('[%(levelname)s] %(asctime)s %(message)s'))
 logger.addHandler(console_handler)
