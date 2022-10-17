@@ -12,7 +12,7 @@ from .quicksnap_utils import State
 from . import addon_updater_ops
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name_addon__)
 addon_keymaps = []
 
 mouse_pointer_offsets = [
@@ -29,8 +29,10 @@ mouse_pointer_offsets = [
 
 class QuickVertexSnapOperator(bpy.types.Operator):
     bl_idname = "object.quick_vertex_snap"
-    bl_label = "Quick Vertex Snap"
+    bl_label = "QuickSnap Tool"
     bl_options = {'INTERNAL', 'UNDO'}
+    bl_description = "Quickly snap selection from/to a selected vertex, curve point, object origin, edge midpoint, face" \
+                     " center.\nUse the same keymap to open the tool PIE menu."
 
     def initialize(self, context):
         # Get 'WINDOW' region of the context. Useful when the active context region is UI within the 3DView
@@ -64,13 +66,20 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                 self.mouse_position)
         self.perspective_matrix = context.space_data.region_3d.perspective_matrix
         self.perspective_matrix_inverse = self.perspective_matrix.inverted()
-        self.edge_links = {}
         self.target_bounds = {}
-        self.target_bmeshs = {}
+        self.target_npdata = {}
+        self.ignore_modifiers = self.settings.ignore_modifiers
+        self.target_face_index = -1
         self.target_object_display_backup = {}
+        self.source_highlight_data = {}
+        self.target_highlight_data = {}
+        self.source_allowed_indices = {}
+        self.target_allowed_indices = {}
+        self.source_npdata = {}
         self.backup_data(context)
         self.update(context, region)
         context.area.header_text_set(f"QuickSnap: Pick a vertex/point from the selection to start move-snapping")
+        self.detect_hotkey()
         return True
 
     def backup_data(self, context):
@@ -195,7 +204,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         hover_object = ""
         if self.current_state == State.IDLE:
             # Find object under the mouse
-            (direct_hit, _, _, _, direct_hit_object, _) = context.scene.ray_cast(context.evaluated_depsgraph_get(),
+            (direct_hit, _, _, self.target_face_index, direct_hit_object, _) = context.scene.ray_cast(context.evaluated_depsgraph_get(),
                                                                                  origin=self.camera_position,
                                                                                  direction=self.mouse_vector)
             # If found, we push this object on top of the stack of objects to process
@@ -264,7 +273,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                          set_first_priority=True)
 
                 # Look for object under the mouse, if found, bring it in top of the list of objects to process.
-                (direct_hit, _, _, _, direct_hit_object, _) = context.scene.ray_cast(depsgraph,
+                (direct_hit, _, _, self.target_face_index, direct_hit_object, _) = context.scene.ray_cast(depsgraph,
                                                                                      origin=self.camera_position,
                                                                                      direction=self.mouse_vector)
                 if direct_hit:
@@ -273,9 +282,9 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     if self.object_mode and quicksnap_utils.has_parent(direct_hit_object, selected_objs):
                         if direct_hit_object.name not in self.snapdata_target.processed:
                             self.snapdata_target.processed.add(direct_hit_object.name)
-                    else:
-                        self.snapdata_target.add_object_data(direct_hit_object.name, depsgraph=depsgraph,
-                                                             set_first_priority=True)
+                        else:
+                            self.snapdata_target.add_object_data(direct_hit_object.name, depsgraph=depsgraph,
+                                                                 set_first_priority=True)
 
                 # Revert hidden objects
                 for obj in self.selection_objects:
@@ -358,10 +367,21 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                          context.space_data.region_3d)
 
     def __init__(self):
+        self.ignore_modifiers = None
+        self.target_face_index = -1
+        self.hotkey_type = 'V'
+        self.hotkey_alt = False
+        self.hotkey_ctrl = True
+        self.hotkey_shift = True
+        self.menu_open = False
         self.hover_object = ""
-        self.edge_links = None
         self.target_bounds = None
-        self.target_bmeshs = None
+        self.source_highlight_data = None
+        self.source_allowed_indices = None
+        self.target_highlight_data = None
+        self.target_allowed_indices = None
+        self.source_npdata = None
+        self.target_npdata = None
         self.backup_curve_points = None
         self.last_translation = None
         self.translate_ops = None
@@ -409,10 +429,17 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         """
         Re-Init the snapdata if the view camera moved. (Updates 2d positions of all points)
         """
-        # logger.info("refresh data")
         region3d = context.space_data.region_3d
+        if self.camera_position == region3d.view_matrix.inverted().translation \
+                and self.perspective_matrix == region3d.perspective_matrix:
+            return
+        logger.info("refresh data")
         self.camera_position = region3d.view_matrix.inverted().translation
         self.target_bounds = {}
+        self.source_highlight_data = {}
+        self.target_highlight_data = {}
+        self.source_allowed_indices = {}
+        self.target_allowed_indices = {}
         self.perspective_matrix = context.space_data.region_3d.perspective_matrix
         self.perspective_matrix_inverse = self.perspective_matrix.inverted()
         if self.current_state == State.IDLE:
@@ -428,7 +455,9 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         for area_region in context.area.regions:
             if area_region.type == 'WINDOW':
                 region = area_region
-
+        if self.current_state == State.IDLE and event.type not in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE',
+                                                                   'TIMER'}:
+            self.refresh_vertex_data(context, region)
         snapdata_updated = False
         if self.current_state == State.IDLE:
             snapdata_updated = snapdata_updated or self.snapdata_source.process_iteration(context)
@@ -440,11 +469,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
         self.handle_hotkeys(context, event, region)
 
-        if event.type in {'RIGHTMOUSE', 'ESC'}:  # Cancel
+        if event.type in {'RIGHTMOUSE', 'ESC'} and not self.menu_open and event.value == 'PRESS':  # Cancel
             self.terminate(context, revert=True)
             return {'CANCELLED'}
 
-        elif event.type == 'LEFTMOUSE':  # Confirm
+        elif event.type == 'LEFTMOUSE' and not self.menu_open:  # Confirm
             if self.current_state == State.IDLE and self.closest_source_id >= 0 and self.closest_actionable:
                 self.current_state = State.SOURCE_PICKED
                 self.set_object_display("", "")
@@ -454,17 +483,16 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 return {'FINISHED'}
 
         elif event.type == 'MOUSEMOVE' or snapdata_updated:  # Apply
+            if self.menu_open:
+                self.handle_pie_menu_closed(context,event,region)
+                self.menu_open = False
             self.update_mouse_position(context, event)
-            if self.camera_moved:
-                self.refresh_vertex_data(context, region)
-                self.camera_moved = False
             self.update(context, region)
             self.apply(context, region)
             self.update_header(context)
 
         # Allow navigation
         if self.current_state == State.IDLE and event.type in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
-            self.camera_moved = True
             return {'PASS_THROUGH'}
 
         return {'RUNNING_MODAL'}
@@ -477,7 +505,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         if event.is_repeat or event.value != 'PRESS':
             return
         event_type = event.type
-        if event_type == 'X':
+        if not self.menu_open and event_type == self.hotkey_type and event.shift == self.hotkey_shift \
+                and event.ctrl == self.hotkey_ctrl and event.alt == self.hotkey_alt and self.current_state==State.IDLE:
+            self.menu_open = True
+            bpy.ops.wm.call_menu_pie(name="VIEW3D_MT_PIE_quicksnap")
+        elif event_type == 'X':
             if event.shift:
                 new_snapping = 'YZ'
             else:
@@ -534,6 +566,20 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
             self.refresh_vertex_data(context, region)
             self.set_object_display(self.target_object, self.hover_object, self.target_object_is_root, force=True)
+        elif event_type == 'TAB' and event.shift and event.ctrl:
+            loglevel = logger.level
+            if loglevel == logging.NOTSET:
+                logger.setLevel(logging.INFO)
+                logger.info("QuickSnap: Setting logger level to: INFO")
+                self.report({'INFO'}, f"QuickSnap: Setting logger level to: INFO. Use Ctrl+Shift+TAB to change debug level.")
+            elif loglevel == logging.INFO:
+                logger.setLevel(logging.DEBUG)
+                logger.debug("QuickSnap: Setting logger level to: DEBUG")
+                self.report({'INFO'}, f"QuickSnap: Setting logger level to: DEBUG. Use Ctrl+Shift+TAB to change debug level.")
+            if loglevel == logging.DEBUG:
+                logger.setLevel(logging.NOTSET)
+                self.report({'INFO'}, f"QuickSnap: Disabling debug. Use Ctrl+Shift+TAB to change debug level.")
+                print("QuickSnap: Disabling debug")
         self.update_header(context)
 
     def terminate(self, context, revert=False):
@@ -561,10 +607,10 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         for selected_object in self.selection_objects:
             bpy.data.objects[selected_object].select_set(True)
 
-        if self.target_bmeshs is not None and len(self.target_bmeshs) > 0:
-            for bm in self.target_bmeshs:
-                self.target_bmeshs[bm].free()
-            self.target_bmeshs = {}
+        if self.target_npdata is not None and len(self.target_npdata) > 0:
+            for bm in self.target_npdata:
+                self.target_npdata[bm] = None
+            self.target_npdata = {}
 
     def update_mouse_position(self, context, event):
         self.mouse_position = (event.mouse_region_x, event.mouse_region_y)
@@ -619,6 +665,46 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
+    def handle_pie_menu_closed(self, context, event, region):
+        if self.settings.snap_source_type != self.snapdata_source.snap_type or \
+                self.ignore_modifiers != self.settings.ignore_modifiers:
+
+            self.snapdata_source.__init__(context, region, self.settings, self.selection_objects)
+            self.source_highlight_data = {}
+            self.target_highlight_data = {}
+            self.source_allowed_indices = {}
+            self.target_allowed_indices = {}
+            self.source_npdata = {}
+            self.target_npdata = {}
+        if self.settings.snap_target_type != self.snapdata_target.snap_type or \
+                self.ignore_modifiers != self.settings.ignore_modifiers:
+            self.snapdata_target.is_enabled = False
+            self.snapdata_target.__init__(context, region, self.settings, self.selection_objects,
+                                          quicksnap_utils.get_scene_objects(True))
+            self.source_highlight_data = {}
+            self.target_highlight_data = {}
+            self.source_allowed_indices = {}
+            self.target_allowed_indices = {}
+            self.source_npdata = {}
+            self.target_npdata = {}
+        self.ignore_modifiers = self.settings.ignore_modifiers
+        pass
+
+    def detect_hotkey(self):
+        key_config = bpy.context.window_manager.keyconfigs.addon
+        categories = set([cat for (cat, key) in addon_keymaps])
+        id_names = [key.idname for (cat, key) in addon_keymaps]
+        for cat in categories:
+            active_cat = key_config.keymaps.find(cat.name, space_type=cat.space_type,
+                                                 region_type=cat.region_type).active()
+            for active_key in active_cat.keymap_items:
+                if active_key.idname in id_names:
+                    self.hotkey_type = active_key.type
+                    self.hotkey_ctrl = active_key.ctrl
+                    self.hotkey_shift = active_key.shift
+                    self.hotkey_alt = active_key.alt
+        pass
+
 
 def get_addon_settings():
     addon = bpy.context.preferences.addons.get(__name_addon__)
@@ -640,9 +726,43 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         default="ALWAYS", )
     display_target_wireframe: bpy.props.BoolProperty(name="Display target object wireframe", default=True)
     display_hover_wireframe: bpy.props.BoolProperty(name="Display mouseover object wireframe", default=True)
-    highlight_target_vertex_edges: bpy.props.BoolProperty(name="Highlight target vertex edges (Impact performances)",
+    highlight_target_vertex_edges: bpy.props.BoolProperty(name="Enable highlighting of target vertex edges*",
                                                           default=True)
+    edge_highlight_width: bpy.props.IntProperty(name="Highlight Width", default=2, min=1, max=5)
+    edge_highlight_color_source: bpy.props.FloatVectorProperty(
+       name="Highlight Color (Selected object)",
+       subtype='COLOR',
+       default=(1.0, 1.0, 0.0),
+       min=0.0, max=1.0
+       )
+    edge_highlight_color_target: bpy.props.FloatVectorProperty(
+        name="Highlight Color (Target object)",
+        subtype='COLOR',
+        default=(1.0, 1.0, 0.0),
+        min=0.0, max=1.0
+    )
+    edge_highlight_opacity: bpy.props.FloatProperty(name="Highlight Opacity", default=1, min=0, max=1)
+    display_potential_target_points: bpy.props.BoolProperty(name="Display near edge midpoints/face centers*"
+                                                            ,default=True)
     ignore_modifiers: bpy.props.BoolProperty(name="Ignore modifiers (For heavy scenes)", default=False)
+
+    snap_source_type: bpy.props.EnumProperty(
+        name="Snap From",
+        items=[
+            ("POINTS", "Vertices, Curve points", "", 0),
+            ("MIDPOINTS", "Edges mid-points", "", 1),
+            ("FACES", "Face centers", "", 2)
+        ],
+        default="POINTS", )
+
+    snap_target_type: bpy.props.EnumProperty(
+        name="Snap To",
+        items=[
+            ("POINTS", "Vertices, Curve points", "", 0),
+            ("MIDPOINTS", "Edges mid-points", "", 1),
+            ("FACES", "Face centers", "", 2)
+        ],
+        default="POINTS", )
 
     # addon updater preferences from `__init__`, be sure to copy all of them
     auto_check_update: bpy.props.BoolProperty(
@@ -682,13 +802,25 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         layout = self.layout
         col = layout.column(align=True)
         col.use_property_split = True
+        col.prop(self, "ignore_modifiers")
         col.prop(self, "snap_objects_origin")
         col.prop(self, "draw_rubberband")
         col.prop(self, "display_target_wireframe")
         col.prop(self, "display_hover_wireframe")
-        col.prop(self, "highlight_target_vertex_edges")
-        col.prop(self, "ignore_modifiers")
+        col.prop(self, "display_potential_target_points")
+        col.separator()
+        container=col.box().column()
+        container.label(text="Target Edge Highlight*:")
+        # container.use_property_split = False
+        container.prop(self, "highlight_target_vertex_edges")
+        # container.use_property_split = True
+        if self.highlight_target_vertex_edges:
+            container.prop(self, "edge_highlight_width")
+            container.prop(self, "edge_highlight_opacity")
+            container.prop(self, "edge_highlight_color_source")
+            container.prop(self, "edge_highlight_color_target")
 
+        col.label(text="*Can noticeably impact performances")
         box_content = layout.box()
         header = box_content.row(align=True)
         header.label(text="Keymap", icon='EVENT_A')
@@ -698,14 +830,24 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         key_config = bpy.context.window_manager.keyconfigs.addon
         categories = set([cat for (cat, key) in addon_keymaps])
         id_names = [key.idname for (cat, key) in addon_keymaps]
+        quicksnap_keymap = None
         for cat in categories:
             active_cat = key_config.keymaps.find(cat.name, space_type=cat.space_type,
                                                  region_type=cat.region_type).active()
             for active_key in active_cat.keymap_items:
                 if active_key.idname in id_names:
+                    quicksnap_keymap = active_key
                     quicksnap_utils.display_keymap(active_key, col)
         col.separator()
-        col.label(text="Modifier hotkeys:")
+        col.label(text="QuickSnap hotkeys:")
+        if quicksnap_keymap is not None:
+            quicksnap_utils.insert_ui_hotkey(col, f'EVENT_{quicksnap_keymap.type}',
+                                             "Open PIE menu (Same keymap as the QuickSnap Tool)",
+                                             shift=quicksnap_keymap.shift,
+                                             control=quicksnap_keymap.ctrl,
+                                             alt=quicksnap_keymap.alt,
+                                             )
+
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_X', "Constraint to X Axis")
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_X', "Constraint to X Plane", shift=True)
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_Y', "Constraint to Y Axis")
@@ -729,9 +871,46 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
 #     bl_icon = "ops.transform.vertex_random"
 #     operator="object.quick_vertex_snap"
 
+
+class VIEW3D_MT_PIE_quicksnap(bpy.types.Menu):
+    # label is displayed at the center of the pie menu.
+    bl_label = "QuickSnap_Pie"
+
+    def draw(self, context):
+        layout = self.layout
+        settings = get_addon_settings()
+
+        pie = layout.menu_pie()
+        source_column = pie.column()
+        source_column.label(text="Snap From:")
+        source_column.prop(settings, "snap_source_type", expand=True)
+
+        # operator_enum will just spread all available options
+        # for the type enum of the operator on the pie
+        target_column = pie.column()
+        target_column.label(text="Snap To:")
+        target_column.prop(settings, "snap_target_type", expand=True)
+        pie.operator("quicksnap.open_settings")
+        pie.prop(settings, "ignore_modifiers")
+
+
+class QUICKSNAP_OT_OpenSettings(bpy.types.Operator):
+    bl_idname = "quicksnap.open_settings"
+    bl_label = "Open Addon Settings"
+    bl_options = {'REGISTER', 'INTERNAL'}
+
+    def execute(self, context):
+        bpy.ops.screen.userpref_show()
+        bpy.context.preferences.active_section = 'ADDONS'
+        bpy.data.window_managers["WinMan"].addon_search = "QuickSnap"
+        bpy.data.window_managers["WinMan"].addon_filter = 'All'
+        return {"FINISHED"}
+
 blender_classes = [
     QuickVertexSnapOperator,
     QuickVertexSnapPreference,
+    QUICKSNAP_OT_OpenSettings,
+    VIEW3D_MT_PIE_quicksnap
 ]
 
 

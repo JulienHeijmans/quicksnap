@@ -3,7 +3,7 @@ from mathutils import Vector
 from enum import Enum
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name_addon__)
 
 
 class State(Enum):
@@ -266,7 +266,7 @@ def insert_prop_with_width(property_object, property_name, layout, align='CENTER
                       icon_only=icon_only, full_event=full_event)
 
 
-def insert_ui_hotkey(container, key, description, control=False, shift=False):
+def insert_ui_hotkey(container, key, description, control=False, shift=False, alt=False):
     """
     Insert UI hotkey information: KeyMap icons + description
     """
@@ -274,10 +274,21 @@ def insert_ui_hotkey(container, key, description, control=False, shift=False):
     container_description = line.split(factor=0.39)
     row = container_description.row(align=True)
     row.alignment = 'RIGHT'
+
+    if alt:
+        row.label(text="", icon="EVENT_ALT")
     if control:
         row.label(text="", icon="EVENT_CTRL")
     if shift:
         row.label(text="", icon="EVENT_SHIFT")
+    if key == "EVENT_RIGHTMOUSE":
+        key = "MOUSE_RMB"
+    elif key == "EVENT_LEFTMOUSE":
+        key = "MOUSE_LMB"
+    elif key == "EVENT_MIDDLEMOUSE":
+        key = "MOUSE_MMB"
+    elif key.endswith("MOUSE"):
+        key = 'QUESTION'
     row.label(text="", icon=key)
     container_description.label(text=description)
 
