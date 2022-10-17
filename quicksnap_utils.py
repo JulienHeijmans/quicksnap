@@ -3,7 +3,7 @@ from mathutils import Vector
 from enum import Enum
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name_addon__)
 
 
 class State(Enum):

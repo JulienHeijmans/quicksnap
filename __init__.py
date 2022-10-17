@@ -50,8 +50,7 @@ def unregister():
 
 logger = logging.getLogger(__name__)
 logger.handlers = []
-logger.setLevel(logging.DEBUG)
-# logger.setLevel(logging.NOTSET)
+logger.setLevel(logging.NOTSET)
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(fmt=logging.Formatter('[%(levelname)s] %(asctime)s %(message)s'))
 logger.addHandler(console_handler)

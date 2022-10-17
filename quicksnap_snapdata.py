@@ -8,7 +8,7 @@ from mathutils import Vector
 from . import quicksnap_utils
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name_addon__)
 
 
 def time_it(func):
@@ -397,7 +397,7 @@ class SnapData:
                               self.scene_meshes.index(object_name), add_to_kd=self.snap_origins == "ALWAYS"):
             return
         insert_index = self.added_points_np-1
-        # logger.debug(f"add_object_root: {object_name} - insert index={insert_index}")
+        logger.debug(f"add_object_root: {object_name} - insert index={insert_index}")
         self.origins_map[insert_index] = object_name
         self.kd_origins.insert(Vector((self.region_2d[insert_index][0], self.region_2d[insert_index][1], 0)),
                                insert_index)
@@ -444,9 +444,9 @@ class SnapData:
         # Get start/end indices in the array get are copying them into.
         start_insert = self.added_points_np
         end_insert = start_insert+insert_count
-        # logger.debug(f"Process batch [{object_name}] - batch_size={batch_size} - insert_count={insert_count} - "
-        #       f"start_index={start_index} - end_index={end_index} - start_insert={start_insert} - "
-        #       f"end_insert={end_insert} - len world_space={len(self.world_space)} ")
+        logger.debug(f"Process batch [{object_name}] - batch_size={batch_size} - insert_count={insert_count} - "
+              f"start_index={start_index} - end_index={end_index} - start_insert={start_insert} - "
+              f"end_insert={end_insert} - len world_space={len(self.world_space)} ")
 
         # Copy points to target points arrays.
         self.world_space[start_insert:end_insert] = points_data.world_space_co[start_index:end_index]
@@ -467,9 +467,9 @@ class SnapData:
         Adds stored points from start_index to end_index into the kdtrees, then balance the trees
         If is not set, only balance the trees.
         """
-        # logger.debug(f"balance_tree - Source:{self.is_origin_snapdata}")
+        logger.debug(f"balance_tree - Source:{self.is_origin_snapdata}")
         if start_index is not None and end_index is not None:
-            # logger.debug(f"balance_tree - start_index:{start_index} - end_index:{end_index}")
+            logger.debug(f"balance_tree - start_index:{start_index} - end_index:{end_index}")
             insert = self.kd.insert
             for i in range(start_index, end_index):
                 insert(self.region_2d[i], i)
@@ -480,20 +480,19 @@ class SnapData:
         To be called every frame. Process verts/points per batch until the function has run for {max_run_duration}
         """
         if not self or not self.keep_processing:
-            # logger.debug(f"not processing is_origin_snapdata:{self.is_origin_snapdata}")
             return False
-        # logger.debug(f"Processing is_origin_snapdata:{self.is_origin_snapdata}")
         start_time = time.perf_counter()
         elapsed_time = 0
         # Process selected objects first
         if (self.is_origin_snapdata or not self.object_mode) and len(self.to_process_selected) > 0:
-            # logger.debug(f"Process selection - is_origin_snapdata={self.is_origin_snapdata}")
+            logger.debug(f"Process selection - is_origin_snapdata={self.is_origin_snapdata}")
             for object_name in self.to_process_selected.copy():
-                # logger.debug(f"process_iteration selected: {object_name} - Current vertex index:{current_vertex_index} - vertex count:{vertex_count}")
+                logger.debug(f"process_iteration selected: {object_name} - added points:{self.added_points_np} - max vertex count:{len(self.world_space)}")
                 start_insert_id = self.added_points_np
                 while not self.objects_point_data[object_name].completed: #copy object points into snapdata until
                     self.process_points_data_batch(object_name, 1000)
                     if self.objects_point_data[object_name].completed:
+                        logger.debug(f"process_iteration scene:{object_name} - ALL VERTS ADDED")
                         self.to_process_selected.remove(object_name)
                         self.processed.add(object_name)
                         self.balance_tree(start_insert_id, self.added_points_np)
@@ -516,16 +515,13 @@ class SnapData:
 
         # Process scene objects
         if len(self.to_process_scene) > 0:
-            # logger.debug(f"Process Scene - is_origin_snapdata={self.is_origin_snapdata}")
-            # logger.debug(f"Process iteration. To_Process={self.to_process_scene}")
             for selected_object in self.meshes_selection:
                 bpy.data.objects[selected_object].hide_set(True)
             for object_name in self.to_process_scene.copy():
                 obj = bpy.data.objects[object_name]
-                world_space_matrix = obj.matrix_world
                 if object_name not in self.objects_point_data:
                     continue
-                # logger.debug(f"process_iteration unselected: {object_name} - Current vertex index:{current_vertex_index} - vertex count:{vertex_count}")
+                logger.debug(f"process_iteration unselected: {object_name} - added points:{self.added_points_np} - max vertex count:{len(self.world_space)}")
                 start_time_batch = time.perf_counter()
                 counter = 0
                 start_insert_id = self.added_points_np
@@ -533,7 +529,7 @@ class SnapData:
                     self.process_points_data_batch(object_name, 1000)
                     counter += 1
                     if self.objects_point_data[object_name].completed:
-                        # logger.debug(f"process_iteration scene:{object_name} - ALL VERTS ADDED")
+                        logger.debug(f"process_iteration scene:{object_name} - ALL VERTS ADDED")
                         self.to_process_scene.remove(object_name)
                         self.processed.add(object_name)
                         self.balance_tree(start_insert_id, self.added_points_np)
@@ -613,7 +609,6 @@ class SnapData:
         """
         Returns the maximum count of visible verts/points/origins in the scene
         """
-        # logger.debug(f"get_max_vertex_count - source={self.is_source}")
         if self.is_origin_snapdata:
             depsgraph = context.evaluated_depsgraph_get()
             max_vertex_count = len(selected_objects)
@@ -640,19 +635,6 @@ class SnapData:
             all_meshes.extend(selected_objects)
             max_vertex_count = len(all_meshes) + 1  # All objects origins + cursor
 
-            # No longer using scene stats for now as it seems to fail when user have chinese language computer.
-
-            # if bpy.context.active_object.mode == 'OBJECT':
-            #     # Gather vert count from scene stats
-            #     stats_string = context.scene.statistics(context.view_layer)
-            #     max_vertex_count += int(
-            #         [val for val in stats_string.split('|') if 'Verts' in val][0].split(':')[1].replace('.',
-            #                                                                                             '').replace(',',
-            #                                                                                                         ''))
-            # else:
-
-            # Scene stats not available, parse whole scene.
-            # Slow, need to find faster way of getting scene vertex count.
             depsgraph = context.evaluated_depsgraph_get()
             for obj_name in all_meshes:
                 obj = bpy.data.objects[obj_name]
@@ -685,5 +667,5 @@ class SnapData:
                     max_vertex_count += sum(
                         [(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])
 
-        # logger.debug(f"Max vertex count: {max_vertex_count} - is_origin_snapdata={self.is_origin_snapdata}")
+        logger.info(f"Max vertex count: {max_vertex_count} - is_origin_snapdata={self.is_origin_snapdata}")
         return max_vertex_count

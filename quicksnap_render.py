@@ -6,7 +6,8 @@ from .quicksnap_utils import dump
 from mathutils import Vector
 import bmesh
 
-logger = logging.getLogger(__name__)
+__name_addon__ = '.'.join(__name__.split('.')[:-1])
+logger = logging.getLogger(__name_addon__)
 
 shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
 square_indices = ((0, 1), (1, 2), (2, 3), (3, 0))

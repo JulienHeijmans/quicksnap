@@ -12,7 +12,7 @@ from .quicksnap_utils import State
 from . import addon_updater_ops
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name_addon__)
 addon_keymaps = []
 
 mouse_pointer_offsets = [
@@ -566,6 +566,20 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
             self.refresh_vertex_data(context, region)
             self.set_object_display(self.target_object, self.hover_object, self.target_object_is_root, force=True)
+        elif event_type == 'TAB' and event.shift and event.ctrl:
+            loglevel = logger.level
+            if loglevel == logging.NOTSET:
+                logger.setLevel(logging.INFO)
+                logger.info("QuickSnap: Setting logger level to: INFO")
+                self.report({'INFO'}, f"QuickSnap: Setting logger level to: INFO. Use Ctrl+Shift+TAB to change debug level.")
+            elif loglevel == logging.INFO:
+                logger.setLevel(logging.DEBUG)
+                logger.debug("QuickSnap: Setting logger level to: DEBUG")
+                self.report({'INFO'}, f"QuickSnap: Setting logger level to: DEBUG. Use Ctrl+Shift+TAB to change debug level.")
+            if loglevel == logging.DEBUG:
+                logger.setLevel(logging.NOTSET)
+                self.report({'INFO'}, f"QuickSnap: Disabling debug. Use Ctrl+Shift+TAB to change debug level.")
+                print("QuickSnap: Disabling debug")
         self.update_header(context)
 
     def terminate(self, context, revert=False):
@@ -864,7 +878,7 @@ class VIEW3D_MT_PIE_quicksnap(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
-        settings=get_addon_settings()
+        settings = get_addon_settings()
 
         pie = layout.menu_pie()
         source_column = pie.column()
