@@ -11,7 +11,8 @@ bl_info = {
     "category": "3D View",
     "description": "Quickly snap objects/vertices/curve points",
     "warning": "",
-    "wiki_url": "https://github.com/JulienHeijmans/quicksnap",
+    "doc_url": "https://github.com/JulienHeijmans/quicksnap",
+    "releases_url": "https://github.com/JulienHeijmans/quicksnap/releases",
     "tracker_url": "https://github.com/JulienHeijmans/quicksnap/issues",
 }
 

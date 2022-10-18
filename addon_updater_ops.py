@@ -26,6 +26,7 @@ import traceback
 
 import bpy
 from bpy.app.handlers import persistent
+from . import bl_info
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
 __name_addon_display__ = "QuickSnap"
@@ -180,6 +181,15 @@ class AddonUpdaterInstallPopup(bpy.types.Operator):
             col.scale_y = 0.7
             col.label(text="Update {} ready!".format(updater.update_version),
                       icon="LOOP_FORWARDS")
+            if "releases_url" in bl_info:
+                col.label(text=" ")
+                row = col.row()
+                row.scale_y = 3
+                row.alignment='EXPAND'
+                op = row.operator(
+                    "wm.url_open", text="Read {} release notes".format(__name_addon_display__), icon='HELP',
+                ).url = bl_info["releases_url"]
+                col.label(text=" ")
             col.label(text="Choose 'Update Now' & press OK to install, ",
                       icon="BLANK1")
             col.label(text="or click outside window to defer", icon="BLANK1")
