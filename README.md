@@ -7,6 +7,9 @@ https://user-images.githubusercontent.com/35562774/195340412-6931d8f0-045d-4c4d-
 
 If the video is not playing for you, you can watch it here: https://youtu.be/9cWV0JELM88
 
+## Update Notes:
+Check the [Release Page](https://github.com/JulienHeijmans/quicksnap/releases) to learn about the latest updates.
+
 ## Features:
 * Snap From/To:
   * Scene cursor
