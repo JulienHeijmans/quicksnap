@@ -205,9 +205,10 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         hover_object = ""
         if self.current_state == State.IDLE:
             # Find object under the mouse
-            (direct_hit, _, _, self.target_face_index, direct_hit_object, _) = context.scene.ray_cast(context.evaluated_depsgraph_get(),
-                                                                                 origin=self.camera_position,
-                                                                                 direction=self.mouse_vector)
+            (direct_hit, _, _, self.target_face_index, direct_hit_object, _) = context.scene.ray_cast(
+                context.evaluated_depsgraph_get(),
+                origin=self.camera_position,
+                direction=self.mouse_vector)
             # If found, we push this object on top of the stack of objects to process
             if direct_hit and direct_hit_object.name in self.selection_objects:
                 hover_object = direct_hit_object.name
@@ -275,8 +276,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
                 # Look for object under the mouse, if found, bring it in top of the list of objects to process.
                 (direct_hit, _, _, self.target_face_index, direct_hit_object, _) = context.scene.ray_cast(depsgraph,
-                                                                                     origin=self.camera_position,
-                                                                                     direction=self.mouse_vector)
+                                                                                                          origin=self.camera_position,
+                                                                                                          direction=self.mouse_vector)
                 if direct_hit:
                     hover_object = direct_hit_object.name
 
@@ -323,7 +324,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         # logger.info(f"hit_objects: {hit_objects}")
         return hit_objects
 
-    def apply(self, context, region):
+    def apply(self, context, region, use_auto_merge=False):
         """
         Apply operator modifications: Translate objects or vertices/points from source point to target point.
         """
@@ -358,10 +359,12 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                   bpy.data.objects[self.selection_objects[0]])
 
             self.last_translation = (Vector(self.target) - Vector(origin))
+            tool_settings = context.tool_settings
+            use_auto_merge = use_auto_merge and not self.object_mode and tool_settings.use_mesh_automerge
             bpy.ops.transform.translate(value=self.last_translation,
                                         orient_type='GLOBAL',
                                         snap=False,
-                                        use_automerge_and_split=False)
+                                        use_automerge_and_split=use_auto_merge)
 
             # Get the 2D position of the target for ui rendering
             self.target2d = quicksnap_utils.transform_worldspace_coord2d(self.target, region,
@@ -480,12 +483,14 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 self.set_object_display("", "")
                 self.update_header(context)
             else:
+                # Last translation for applying auto-merge
+                self.apply(context, region, use_auto_merge=self.settings.use_auto_merge)
                 self.terminate(context)
                 return {'FINISHED'}
 
         elif event.type == 'MOUSEMOVE' or snapdata_updated:  # Apply
             if self.menu_open:
-                self.handle_pie_menu_closed(context,event,region)
+                self.handle_pie_menu_closed(context, event, region)
                 self.menu_open = False
             self.update_mouse_position(context, event)
             self.update(context, region)
@@ -507,7 +512,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             return
         event_type = event.type
         if not self.menu_open and event_type == self.hotkey_type and event.shift == self.hotkey_shift \
-                and event.ctrl == self.hotkey_ctrl and event.alt == self.hotkey_alt and self.current_state==State.IDLE:
+                and event.ctrl == self.hotkey_ctrl and event.alt == self.hotkey_alt and self.current_state == State.IDLE:
             self.menu_open = True
             bpy.ops.wm.call_menu_pie(name="VIEW3D_MT_PIE_quicksnap")
         elif event_type == 'X':
@@ -572,11 +577,13 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             if loglevel == logging.NOTSET:
                 logger.setLevel(logging.INFO)
                 logger.info("QuickSnap: Setting logger level to: INFO")
-                self.report({'INFO'}, f"QuickSnap: Setting logger level to: INFO. Use Ctrl+Shift+TAB to change debug level.")
+                self.report({'INFO'},
+                            f"QuickSnap: Setting logger level to: INFO. Use Ctrl+Shift+TAB to change debug level.")
             elif loglevel == logging.INFO:
                 logger.setLevel(logging.DEBUG)
                 logger.debug("QuickSnap: Setting logger level to: DEBUG")
-                self.report({'INFO'}, f"QuickSnap: Setting logger level to: DEBUG. Use Ctrl+Shift+TAB to change debug level.")
+                self.report({'INFO'},
+                            f"QuickSnap: Setting logger level to: DEBUG. Use Ctrl+Shift+TAB to change debug level.")
             if loglevel == logging.DEBUG:
                 logger.setLevel(logging.NOTSET)
                 self.report({'INFO'}, f"QuickSnap: Disabling debug. Use Ctrl+Shift+TAB to change debug level.")
@@ -669,7 +676,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
     def handle_pie_menu_closed(self, context, event, region):
         if self.settings.snap_source_type != self.snapdata_source.snap_type or \
                 self.ignore_modifiers != self.settings.ignore_modifiers:
-
             self.snapdata_source.__init__(context, region, self.settings, self.selection_objects)
             self.source_highlight_data = {}
             self.target_highlight_data = {}
@@ -718,6 +724,11 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
     bl_idname = __name_addon__
 
     draw_rubberband: bpy.props.BoolProperty(name="Draw Rubber Band", default=True)
+    use_auto_merge: bpy.props.BoolProperty(
+        name="Use vertices Auto-Merge in Edit mode",
+        description="With this option enabled, QuickSnap will use the Auto-Merge toggle visible in the top right corner"
+                    " of the viewport and automatically merge vertices if it is enabled.",
+        default=True)
     snap_objects_origin: bpy.props.EnumProperty(
         name="Snap from/to objects origins",
         items=[
@@ -731,11 +742,11 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
                                                           default=True)
     edge_highlight_width: bpy.props.IntProperty(name="Highlight Width", default=2, min=1, max=5)
     edge_highlight_color_source: bpy.props.FloatVectorProperty(
-       name="Highlight Color (Selected object)",
-       subtype='COLOR',
-       default=(1.0, 1.0, 0.0),
-       min=0.0, max=1.0
-       )
+        name="Highlight Color (Selected object)",
+        subtype='COLOR',
+        default=(1.0, 1.0, 0.0),
+        min=0.0, max=1.0
+    )
     edge_highlight_color_target: bpy.props.FloatVectorProperty(
         name="Highlight Color (Target object)",
         subtype='COLOR',
@@ -744,7 +755,7 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
     )
     edge_highlight_opacity: bpy.props.FloatProperty(name="Highlight Opacity", default=1, min=0, max=1)
     display_potential_target_points: bpy.props.BoolProperty(name="Display near edge midpoints/face centers*"
-                                                            ,default=True)
+                                                            , default=True)
     ignore_modifiers: bpy.props.BoolProperty(name="Ignore modifiers (For heavy scenes)", default=False)
 
     snap_source_type: bpy.props.EnumProperty(
@@ -804,17 +815,16 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         col = layout.column(align=True)
         col.use_property_split = True
         col.prop(self, "ignore_modifiers")
+        col.prop(self, "use_auto_merge")
         col.prop(self, "snap_objects_origin")
         col.prop(self, "draw_rubberband")
         col.prop(self, "display_target_wireframe")
         col.prop(self, "display_hover_wireframe")
         col.prop(self, "display_potential_target_points")
         col.separator()
-        container=col.box().column()
+        container = col.box().column()
         container.label(text="Target Edge Highlight*:")
-        # container.use_property_split = False
         container.prop(self, "highlight_target_vertex_edges")
-        # container.use_property_split = True
         if self.highlight_target_vertex_edges:
             container.prop(self, "edge_highlight_width")
             container.prop(self, "edge_highlight_opacity")
