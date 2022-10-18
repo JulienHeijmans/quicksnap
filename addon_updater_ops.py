@@ -26,7 +26,6 @@ import traceback
 
 import bpy
 from bpy.app.handlers import persistent
-from . import bl_info
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
 __name_addon_display__ = "QuickSnap"
@@ -182,20 +181,19 @@ class AddonUpdaterInstallPopup(bpy.types.Operator):
             col.label(text="Update {} ready!".format(updater.update_version),
                       icon="LOOP_FORWARDS")
 
-            if "releases_url" in bl_info:
-                col.label(text=" ")
-                row = col.row()
-                row.scale_y = 3
-                row.alignment='EXPAND'
-                op = row.operator(
-                    "wm.url_open", text="Read {} release notes".format(__name_addon_display__), icon='HELP',
-                ).url = bl_info["releases_url"]
-                row = col.row()
-                row.alignment = 'CENTER'
-                row.scale_y = 1.5
-                row.operator("quicksnap.open_settings",text="Disable auto-update in the QuickSnap add-on settings",
-                             icon="TOOL_SETTINGS")
-                col.label(text=" ")
+            col.label(text=" ")
+            row = col.row()
+            row.scale_y = 3
+            row.alignment='EXPAND'
+            op = row.operator(
+                "wm.url_open", text="Read {} release notes".format(__name_addon_display__), icon='HELP',
+            ).url = "https://github.com/JulienHeijmans/quicksnap/releases"
+            row = col.row()
+            row.alignment = 'CENTER'
+            row.scale_y = 1.5
+            row.operator("quicksnap.open_settings",text="Disable auto-update in the QuickSnap add-on settings",
+                         icon="TOOL_SETTINGS")
+            col.label(text=" ")
             col.label(text="Choose 'Update Now' & press OK to install, ",
                       icon="BLANK1")
             col.label(text="or click outside window to defer", icon="BLANK1")
