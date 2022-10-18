@@ -20,8 +20,12 @@ Check the [Release Page](https://github.com/JulienHeijmans/quicksnap/releases) t
   
 * A pie menu allows you to change the type of point you snap from/to. Use the same hotkey as the one you use ot open the tool to display the menu.
 
-![pie-menu](https://user-images.githubusercontent.com/35562774/196196537-82078f77-70ab-4929-a36a-6aaf6fe3bfde.gif)
-  
+    ![pie-menu](https://user-images.githubusercontent.com/35562774/196196537-82078f77-70ab-4929-a36a-6aaf6fe3bfde.gif)
+
+* With the option 'Use vertices Auto-Merge in Edit mode' enabled, vertices will merge automatically with vertices at the same location after a snap.
+
+    ![auto-merge](https://user-images.githubusercontent.com/35562774/196421064-38042819-71df-452c-955c-cbf34977f6d9.gif)
+
 * Constrain the translation on a single axis or a plane using (Shift+)X,Y,Z hotkeys
 * Automatically display wireframe of the mesh you are snapping to and the wireframe of the object right under the mouse (Can be turned off)
 * Snap onto visible and non visible points (Points closer to the camera are prioritized)
@@ -33,15 +37,16 @@ Check the [Release Page](https://github.com/JulienHeijmans/quicksnap/releases) t
 ## Installation
 1. Click on the green button Code > Download Zip to download the addon on your computer
 
-![image](https://user-images.githubusercontent.com/35562774/193323385-b0df72d3-ca22-4ab9-ba60-29ff64eea0a0.png)
+    ![image](https://user-images.githubusercontent.com/35562774/193323385-b0df72d3-ca22-4ab9-ba60-29ff64eea0a0.png)
 
 2. In Blender, go to your preferences, in the add-on section, then click "Install..." in teh top-right of the window, and pick the downloaded archive.
+
 
 ## Add-On hotkey and settings
 * By default, enable the tool by using Ctrl+Shift+V (For Vertex). Watch out if you have multiple keyboards to your windows settings, Ctrl+Shift will cycle the active keyboard.
 * Change the tool hotkey from the Add-On settings window
 * Discover the other hotkeys in the add-on settings, and tweak your own preferences
-![image](https://user-images.githubusercontent.com/35562774/196199499-a99c0ad4-1d56-4eb2-bd0a-1e6a0e242b20.png)
+    ![blender_d6b0hUmPdd](https://user-images.githubusercontent.com/35562774/196420387-3e29abcc-2523-4901-ac9d-bd8a7b9263c4.png)
 
 
 ## Use the tool
@@ -67,7 +72,7 @@ I am saying this but the tool should be efficient enough in most cases.
 * If the same button now says: "Update now to (x,y,z)" it means that a new version exists. Click that button to update, then restart Blender.
 * Here is a video showing how ot update the add-on from within blender: (You need to click on the play icon in the top right corner)
 
-![quicksnap-update](https://user-images.githubusercontent.com/35562774/195124862-dd573b55-ee2a-4995-a068-dd568822186d.gif)
+    ![quicksnap-update](https://user-images.githubusercontent.com/35562774/195124862-dd573b55-ee2a-4995-a068-dd568822186d.gif)
   
   
 ## Bug Report:
@@ -75,6 +80,7 @@ I am saying this but the tool should be efficient enough in most cases.
 * If the problem persist with the latest version of the addon:
   * Please create an issue here, and I will try to fix the issue asap: https://github.com/JulienHeijmans/quicksnap/issues
   * Do not forget to explain what you were doing and what was in your scene when the issue happened. If you can share the scene, you can also do so.
+
 
 ## Known issues / limitation:
 * Target highlighting does not work with 'Ignore modifiers' enabled. I plan to investigate new ways to ignore modifiers that might allow highlighting in that situation.
