@@ -185,7 +185,7 @@ class AddonUpdaterInstallPopup(bpy.types.Operator):
             row = col.row()
             row.scale_y = 3
             row.alignment='EXPAND'
-            op = row.operator(
+            row.operator(
                 "wm.url_open", text="Read {} release notes".format(__name_addon_display__), icon='HELP',
             ).url = "https://github.com/JulienHeijmans/quicksnap/releases"
             row = col.row()
@@ -1026,7 +1026,7 @@ def update_settings_ui(self, context, element=None):
         sub_col = col.row(align=True)
         sub_col.scale_y = 1
         split = sub_col.split(align=True)
-        split.scale_y = 2
+        split.scale_y = 3
         if "ssl" in updater.error_msg.lower():
             split.enabled = True
             split.operator(AddonUpdaterInstallManually.bl_idname,
@@ -1036,22 +1036,22 @@ def update_settings_ui(self, context, element=None):
             split.operator(AddonUpdaterCheckNow.bl_idname,
                            text=updater.error)
         split = sub_col.split(align=True)
-        split.scale_y = 2
+        split.scale_y = 3
         split.operator(AddonUpdaterCheckNow.bl_idname,
                        text="", icon="FILE_REFRESH")
 
     elif updater.update_ready is None and not updater.async_checking:
-        col.scale_y = 2
+        col.scale_y = 3
         col.operator(AddonUpdaterCheckNow.bl_idname)
     elif updater.update_ready is None:  # async is running
         sub_col = col.row(align=True)
         sub_col.scale_y = 1
         split = sub_col.split(align=True)
         split.enabled = False
-        split.scale_y = 2
+        split.scale_y = 3
         split.operator(AddonUpdaterCheckNow.bl_idname, text="Checking...")
         split = sub_col.split(align=True)
-        split.scale_y = 2
+        split.scale_y = 3
         split.operator(AddonUpdaterEndBackground.bl_idname, text="", icon="X")
 
     elif updater.include_branches and \
@@ -1061,12 +1061,12 @@ def update_settings_ui(self, context, element=None):
         sub_col = col.row(align=True)
         sub_col.scale_y = 1
         split = sub_col.split(align=True)
-        split.scale_y = 2
+        split.scale_y = 3
         update_now_txt = "Update directly to {}".format(
             updater.include_branch_list[0])
         split.operator(AddonUpdaterUpdateNow.bl_idname, text=update_now_txt)
         split = sub_col.split(align=True)
-        split.scale_y = 2
+        split.scale_y = 3
         split.operator(AddonUpdaterCheckNow.bl_idname,
                        text="", icon="FILE_REFRESH")
 
@@ -1074,11 +1074,11 @@ def update_settings_ui(self, context, element=None):
         sub_col = col.row(align=True)
         sub_col.scale_y = 1
         split = sub_col.split(align=True)
-        split.scale_y = 2
+        split.scale_y = 3
         split.operator(AddonUpdaterUpdateNow.bl_idname,
                        text="Update now to " + str(updater.update_version))
         split = sub_col.split(align=True)
-        split.scale_y = 2
+        split.scale_y = 3
         split.operator(AddonUpdaterCheckNow.bl_idname,
                        text="", icon="FILE_REFRESH")
 
@@ -1092,11 +1092,11 @@ def update_settings_ui(self, context, element=None):
         sub_col.scale_y = 1
         split = sub_col.split(align=True)
         split.enabled = False
-        split.scale_y = 2
+        split.scale_y = 3
         split.operator(AddonUpdaterCheckNow.bl_idname,
                        text="Addon is up to date")
         split = sub_col.split(align=True)
-        split.scale_y = 2
+        split.scale_y = 3
         split.operator(AddonUpdaterCheckNow.bl_idname,
                        text="", icon="FILE_REFRESH")
 
@@ -1118,6 +1118,9 @@ def update_settings_ui(self, context, element=None):
                 last_date = updater.json["backup_date"]
         backup_text = "Restore addon backup ({})".format(last_date)
         col.operator(AddonUpdaterRestoreBackup.bl_idname, text=backup_text)
+        col.operator(
+            "wm.url_open", text="Read {} release notes".format(__name_addon_display__), icon='HELP',
+        ).url = "https://github.com/JulienHeijmans/quicksnap/releases"
 
     row = box.row()
     row.scale_y = 0.7
