@@ -30,6 +30,7 @@ Check the [Release Page](https://github.com/JulienHeijmans/quicksnap/releases) t
 * Automatically display wireframe of the mesh you are snapping to and the wireframe of the object right under the mouse (Can be turned off)
 * Snap onto visible and non visible points (Points closer to the camera are prioritized)
 * Highlight target vertex edges, as well as potential target edge midpoint and target facecenters for better readability
+    ![target_highlight](https://user-images.githubusercontent.com/35562774/196428455-6ba30a31-faeb-4c7c-9dbc-9b3dcca08af3.gif)
 * An Add-On updater allows you to update the addon from within the preference menu
 
 
