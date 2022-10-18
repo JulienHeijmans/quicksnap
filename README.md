@@ -44,6 +44,7 @@ Check the [Release Page](https://github.com/JulienHeijmans/quicksnap/releases) t
 
 ## Add-On hotkey and settings
 * By default, enable the tool by using Ctrl+Shift+V (For Vertex). Watch out if you have multiple keyboards to your windows settings, Ctrl+Shift will cycle the active keyboard.
+* Use the same hotkey to display the pie menu
 * Change the tool hotkey from the Add-On settings window
 * Discover the other hotkeys in the add-on settings, and tweak your own preferences
     ![blender_d6b0hUmPdd](https://user-images.githubusercontent.com/35562774/196420387-3e29abcc-2523-4901-ac9d-bd8a7b9263c4.png)
@@ -52,7 +53,7 @@ Check the [Release Page](https://github.com/JulienHeijmans/quicksnap/releases) t
 ## Use the tool
 * Select the object or the vertices/edges/faces/curve points you want to move
 * Enable the tool using the hotkey (Ctrl+Shift+V by default)
-* Whith the tool enabled use the same hotkey (Ctrl+Shift+V by default) to open the pie menu and chose what you snap from*to (Vertices and curve points / edge midpoints / face centers)
+* With the tool enabled use the same hotkey (Ctrl+Shift+V by default) to open the pie menu and chose what you snap from/to (Vertices and curve points / edge midpoints / face centers)
 * Move the mouse over the point you want to snap FROM
 * Click an hold the right mouse button, mouve the mouse over the point you want to snap TO
 * Release the mouse
