@@ -181,6 +181,7 @@ class AddonUpdaterInstallPopup(bpy.types.Operator):
             col.scale_y = 0.7
             col.label(text="Update {} ready!".format(updater.update_version),
                       icon="LOOP_FORWARDS")
+
             if "releases_url" in bl_info:
                 col.label(text=" ")
                 row = col.row()
@@ -189,6 +190,11 @@ class AddonUpdaterInstallPopup(bpy.types.Operator):
                 op = row.operator(
                     "wm.url_open", text="Read {} release notes".format(__name_addon_display__), icon='HELP',
                 ).url = bl_info["releases_url"]
+                row = col.row()
+                row.alignment = 'CENTER'
+                row.scale_y = 1.5
+                row.operator("quicksnap.open_settings",text="Disable auto-update in the QuickSnap add-on settings",
+                             icon="TOOL_SETTINGS")
                 col.label(text=" ")
             col.label(text="Choose 'Update Now' & press OK to install, ",
                       icon="BLANK1")
