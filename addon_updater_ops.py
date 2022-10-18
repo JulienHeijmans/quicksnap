@@ -137,7 +137,7 @@ def get_user_preferences(context=None):
 # Simple popup to prompt use to check for update & offer install if available.
 class AddonUpdaterInstallPopup(bpy.types.Operator):
     """Check and install update if available"""
-    bl_label = "Update {x} addon".format(x=updater.addon)
+    bl_label = "{x} addon update available".format(x=__name_addon_display__)
     bl_idname = updater.addon + ".updater_install_popup"
     bl_description = "Popup to check and display current updates available"
     bl_options = {'REGISTER', 'INTERNAL'}
@@ -277,10 +277,10 @@ class AddonUpdaterCheckNow(bpy.types.Operator):
 
 
 class AddonUpdaterUpdateNow(bpy.types.Operator):
-    bl_label = "Update " + updater.addon + " addon now"
+    bl_label = "Update " + __name_addon_display__ + " addon now"
     bl_idname = updater.addon + ".updater_update_now"
     bl_description = "Update to the latest version of the {x} addon".format(
-        x=updater.addon)
+        x=__name_addon_display__)
     bl_options = {'REGISTER', 'INTERNAL'}
 
     # If true, run clean install - ie remove all files before adding new
@@ -342,7 +342,7 @@ class AddonUpdaterUpdateTarget(bpy.types.Operator):
     bl_label = updater.addon + " version target"
     bl_idname = updater.addon + ".updater_update_target"
     bl_description = "Install a targeted version of the {x} addon".format(
-        x=updater.addon)
+        x=__name_addon_display__)
     bl_options = {'REGISTER', 'INTERNAL'}
 
     def target_version(self, context):

@@ -35,6 +35,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                      " center.\nUse the same keymap to open the tool PIE menu."
 
     def initialize(self, context):
+        addon_updater_ops.check_for_update_background()
         # Get 'WINDOW' region of the context. Useful when the active context region is UI within the 3DView
         region = None
         for region_item in context.area.regions:
@@ -905,6 +906,7 @@ class QUICKSNAP_OT_OpenSettings(bpy.types.Operator):
         bpy.data.window_managers["WinMan"].addon_search = "QuickSnap"
         bpy.data.window_managers["WinMan"].addon_filter = 'All'
         return {"FINISHED"}
+
 
 blender_classes = [
     QuickVertexSnapOperator,
