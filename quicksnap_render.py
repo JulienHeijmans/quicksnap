@@ -1,4 +1,4 @@
-﻿import bpy, gpu, blf, bgl, logging
+﻿import bpy, gpu, blf, bgl, logging, bpy_extras
 import numpy as np
 from gpu_extras.batch import batch_for_shader
 from .quicksnap_utils import State
@@ -155,14 +155,20 @@ def draw_points_3d(coords, color=(1, 1, 0, 1), point_width=3, depth_test=False):
 def draw_callback_2d(self, context):
     # logger.info("draw_callback_2D")
     if self.closest_source_id >= 0:
-        closest_position_2d = self.snapdata_source.region_2d[self.closest_source_id]
-        source_x, source_y = closest_position_2d[0], closest_position_2d[1]
+        source_position_3d = self.snapdata_source.world_space[self.closest_source_id]
+
+        source_position_2d = bpy_extras.view3d_utils.location_3d_to_region_2d(context.region,
+                                                                               context.space_data.region_3d,
+                                                                               source_position_3d)
+        # closest_position_2d = self.snapdata_source.region_2d[self.closest_source_id]
+        source_x, source_y = source_position_2d[0], source_position_2d[1]
         # Source selection
         if self.current_state == State.IDLE:  # no source picked
             # logger.info("no source picked")
             draw_square_2d(source_x, source_y, 7)
 
         else:
+
             # logger.info(f"source picked . self.target2d={self.target2d} -  self.settings.draw_rubberband={self.settings.draw_rubberband}")
             if self.closest_target_id >= 0:
                 color = (0, 1, 0, 1)
@@ -172,9 +178,15 @@ def draw_callback_2d(self, context):
                 draw_square_2d(source_x, source_y, 7, color=color)
             if self.target2d:
                 if self.closest_target_id >= 0:
+                    target_position_3d = self.snapdata_source.world_space[self.closest_target_id]
+
+                    target_position_2d = bpy_extras.view3d_utils.location_3d_to_region_2d(context.region,
+                                                                                          context.space_data.region_3d,
+                                                                                          target_position_3d)
+                    target_x, target_y = target_position_2d[0], target_position_2d[1]
                     if len(self.snapping) > 0:
                         closest_position_2d = self.snapdata_target.region_2d[self.closest_target_id]
-                        draw_square_2d(closest_position_2d[0], closest_position_2d[1], 7,
+                        draw_square_2d(target_x, target_y, 7,
                                        color=color)  # square to snapped point
                         draw_square_2d(self.target2d[0], self.target2d[1], 7, color=color,
                                        line_width=0)  # dot to target

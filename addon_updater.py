@@ -1209,8 +1209,8 @@ class SingletonUpdater:
             self.print_verbose("Skipping async check, already started")
             # already running the bg thread
         elif self._update_ready is None:
-            print("{} updater: Running background check for update".format(
-                  self.addon))
+            # print("{} updater: Running background check for update".format(
+            #       self.addon))
             self.start_async_check_update(False, callback)
 
     def check_for_update_now(self, callback=None):
