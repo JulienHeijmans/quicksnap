@@ -1,10 +1,9 @@
-﻿import bpy, gpu, blf, bgl, logging
+﻿import bpy, gpu, blf, bgl, logging, bpy_extras
 import numpy as np
 from gpu_extras.batch import batch_for_shader
 from .quicksnap_utils import State
 from .quicksnap_utils import dump
 from mathutils import Vector
-import bmesh
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
 logger = logging.getLogger(__name_addon__)
@@ -123,7 +122,7 @@ def draw_polygon_smooth_blend(points, indices, color, depth_test):
     bgl.glEnable(bgl.GL_LINE_SMOOTH)
     if depth_test:
         bgl.glEnable(bgl.GL_DEPTH_TEST)
-    colors = [color]*len(points)
+    colors = [color] * len(points)
     batch = batch_for_shader(shader_3d_smooth_color, 'TRIS', {"pos": points, "color": colors}, indices=indices)
     shader.uniform_float("color", color)
     shader_3d_smooth_color.bind()
@@ -155,14 +154,20 @@ def draw_points_3d(coords, color=(1, 1, 0, 1), point_width=3, depth_test=False):
 def draw_callback_2d(self, context):
     # logger.info("draw_callback_2D")
     if self.closest_source_id >= 0:
-        closest_position_2d = self.snapdata_source.region_2d[self.closest_source_id]
-        source_x, source_y = closest_position_2d[0], closest_position_2d[1]
+        source_position_3d = self.snapdata_source.world_space[self.closest_source_id]
+
+        source_position_2d = bpy_extras.view3d_utils.location_3d_to_region_2d(context.region,
+                                                                              context.space_data.region_3d,
+                                                                              source_position_3d)
+        # closest_position_2d = self.snapdata_source.region_2d[self.closest_source_id]
+        source_x, source_y = source_position_2d[0], source_position_2d[1]
         # Source selection
         if self.current_state == State.IDLE:  # no source picked
             # logger.info("no source picked")
             draw_square_2d(source_x, source_y, 7)
 
         else:
+
             # logger.info(f"source picked . self.target2d={self.target2d} -  self.settings.draw_rubberband={self.settings.draw_rubberband}")
             if self.closest_target_id >= 0:
                 color = (0, 1, 0, 1)
@@ -170,21 +175,30 @@ def draw_callback_2d(self, context):
                 color = (1, 1, 0, 1)
             if self.settings.draw_rubberband:
                 draw_square_2d(source_x, source_y, 7, color=color)
-            if self.target2d:
-                if self.closest_target_id >= 0:
-                    if len(self.snapping) > 0:
-                        closest_position_2d = self.snapdata_target.region_2d[self.closest_target_id]
-                        draw_square_2d(closest_position_2d[0], closest_position_2d[1], 7,
-                                       color=color)  # square to snapped point
-                        draw_square_2d(self.target2d[0], self.target2d[1], 7, color=color,
-                                       line_width=0)  # dot to target
-                    else:
-                        draw_square_2d(self.target2d[0], self.target2d[1], 7, color=color)
-                else:
-                    draw_square_2d(self.target2d[0], self.target2d[1], 7, color=color, line_width=0)  # dot to target
+            # if self.target2d:
+            if self.target is not None:
+                target_position_2d = bpy_extras.view3d_utils.location_3d_to_region_2d(context.region,
+                                                                                      context.space_data.region_3d,
+                                                                                      self.target)
+                target_x, target_y = target_position_2d[0], target_position_2d[1]
 
-            if self.settings.draw_rubberband and self.target2d:
-                draw_line_2d(source_x, source_y, self.target2d[0], self.target2d[1], line_width=1, color=color)
+                if self.closest_target_id >= 0:
+                    snap_target_2d = bpy_extras.view3d_utils.location_3d_to_region_2d(
+                        context.region,
+                        context.space_data.region_3d,
+                        self.snapdata_target.world_space[self.closest_target_id])
+                    if len(self.snapping) > 0:
+                        draw_square_2d(target_x, target_y, 7,
+                                       color=color, line_width=0)  # dot to target
+                        draw_square_2d(snap_target_2d[0], snap_target_2d[1], 7, color=color)  # square to snapped point
+                    else:
+                        draw_square_2d(target_x, target_y, 7, color=color)
+                else:
+                    draw_square_2d(target_x, target_y, 7, color=color,
+                                   line_width=0)  # dot to target
+
+                if self.settings.draw_rubberband:
+                    draw_line_2d(source_x, source_y, target_x, target_y, line_width=1, color=color)
 
 
 def draw_snap_axis(self, context):
@@ -321,7 +335,8 @@ def draw_callback_3d(self, context):
                             allowed_indices = self.snapdata_target.indices[:self.snapdata_target.added_points_np]
                             object_indices = self.snapdata_target.object_id[:self.snapdata_target.added_points_np]
                             self.target_allowed_indices[self.hover_object] = \
-                                allowed_indices[object_indices == self.snapdata_target.scene_meshes.index(self.hover_object)]
+                                allowed_indices[
+                                    object_indices == self.snapdata_target.scene_meshes.index(self.hover_object)]
                         else:
                             self.target_allowed_indices[self.hover_object] = None
                     draw_face_center(context,
@@ -329,7 +344,8 @@ def draw_callback_3d(self, context):
                                      face_index=self.target_face_index,
                                      allowed_indices=self.target_allowed_indices[self.hover_object],
                                      snap_type=self.snapdata_target.snap_type,
-                                     ignore_modifiers=self.settings.ignore_modifiers or (is_selection and not self.object_mode),
+                                     ignore_modifiers=self.settings.ignore_modifiers or (
+                                                 is_selection and not self.object_mode),
                                      color=context.preferences.themes[0].view_3d.vertex
                                      )
             if self.closest_target_id in self.snapdata_target.origins_map:
@@ -352,7 +368,8 @@ def draw_callback_3d(self, context):
                                     snapdata=self.snapdata_target,
                                     highlight_data=self.target_highlight_data,
                                     npdata=self.target_npdata,
-                                    ignore_modifiers=self.settings.ignore_modifiers or (self.target_object in self.selection_objects and not self.object_mode),
+                                    ignore_modifiers=self.settings.ignore_modifiers or (
+                                                self.target_object in self.selection_objects and not self.object_mode),
                                     width=self.settings.edge_highlight_width,
                                     color=self.settings.edge_highlight_color_target,
                                     opacity=self.settings.edge_highlight_opacity)
@@ -389,13 +406,15 @@ def draw_edge_highlight(context,
                 if target_object not in npdata:
                     npdata[target_object] = {}
                 if "edge_verts" not in npdata[target_object]:
-                    arr = np.zeros(len(data.edges)*2, dtype=np.int)
+                    arr = np.zeros(len(data.edges) * 2, dtype=np.int)
                     data.edges.foreach_get('vertices', arr)
                     arr.shape = (len(data.edges), 2)
                     npdata[target_object]["edge_verts"] = arr
 
-                filter_left = npdata[target_object]["edge_verts"][npdata[target_object]["edge_verts"][:, 0] == vert_index]
-                filter_right = npdata[target_object]["edge_verts"][npdata[target_object]["edge_verts"][:, 1] == vert_index]
+                filter_left = npdata[target_object]["edge_verts"][
+                    npdata[target_object]["edge_verts"][:, 0] == vert_index]
+                filter_right = npdata[target_object]["edge_verts"][
+                    npdata[target_object]["edge_verts"][:, 1] == vert_index]
                 highlight_data[target_object][vert_index] = {}
                 highlight_data[target_object][vert_index]["edges"] = []
                 for match in filter_left:
@@ -424,7 +443,7 @@ def draw_edge_highlight(context,
                     arr = np.zeros(len(data.loop_triangles), dtype=np.int)
                     data.loop_triangles.foreach_get('polygon_index', arr)
                     npdata[target_object]["polygon_loop_tri_idx"] = arr
-                    arr2 = np.zeros(len(data.loop_triangles)*3, dtype=np.int)
+                    arr2 = np.zeros(len(data.loop_triangles) * 3, dtype=np.int)
                     data.loop_triangles.foreach_get('vertices', arr2)
                     arr2.shape = (len(data.loop_triangles), 3)
                     npdata[target_object]["polygon_loop_verts"] = arr2
@@ -449,17 +468,19 @@ def draw_edge_highlight(context,
                     vert_index_b = loops[loop_second].vertex_index
                     if vert_index_a not in verts_co:
                         verts_co[vert_index_a] = matrix @ verts[vert_index_a].co
-                        verts_co[vert_index_a] = verts_co[vert_index_a]+(camera_position - verts_co[vert_index_a]) * 0.01
+                        verts_co[vert_index_a] = verts_co[vert_index_a] + (
+                                    camera_position - verts_co[vert_index_a]) * 0.01
                         new_index = len(highlight_data[target_object][vert_index]["face_co"])
                         vert_local_index[vert_index_a] = new_index
                         highlight_data[target_object][vert_index]["face_co"].append(verts_co[vert_index_a])
                     if vert_index_b not in verts_co:
                         verts_co[vert_index_b] = matrix @ verts[vert_index_b].co
-                        verts_co[vert_index_b] = verts_co[vert_index_b]+(camera_position - verts_co[vert_index_b]) * 0.01
+                        verts_co[vert_index_b] = verts_co[vert_index_b] + (
+                                    camera_position - verts_co[vert_index_b]) * 0.01
                         new_index = len(highlight_data[target_object][vert_index]["face_co"])
                         vert_local_index[vert_index_b] = new_index
                         highlight_data[target_object][vert_index]["face_co"].append(verts_co[vert_index_b])
-                    highlight_data[target_object][vert_index]["edges"] .append(
+                    highlight_data[target_object][vert_index]["edges"].append(
                         (verts_co[vert_index_a], verts_co[vert_index_b]))
 
                 filtered = np.argwhere(npdata[target_object]["polygon_loop_tri_idx"] == vert_index)
@@ -467,7 +488,6 @@ def draw_edge_highlight(context,
                     triangle = npdata[target_object]["polygon_loop_verts"][triangle_index].flatten()
                     highlight_data[target_object][vert_index]["face_indices"].extend(
                         [[vert_local_index[vertid] for vertid in triangle]])
-
 
         if snapdata.snap_type == 'POINTS':
             alpha_end = 0
@@ -481,7 +501,6 @@ def draw_edge_highlight(context,
                                       color_b=(*color, alpha_end),
                                       line_width=width, depth_test=False)
         if snapdata.snap_type == 'FACES':
-
             draw_polygon_smooth_blend(highlight_data[target_object][vert_index]["face_co"],
                                       highlight_data[target_object][vert_index]["face_indices"],
                                       color=(*color, 0.1),
@@ -495,8 +514,7 @@ def draw_face_center(context,
                      snap_type,
                      ignore_modifiers,
                      color):
-
-    if face_index < 0 or snap_type == 'POINTS' or target_object=='':
+    if face_index < 0 or snap_type == 'POINTS' or target_object == '':
         return
 
     obj = bpy.data.objects[target_object]
@@ -518,20 +536,20 @@ def draw_face_center(context,
             region3d = context.space_data.region_3d
             camera_position = region3d.view_matrix.inverted().translation
 
-            draw_points_3d([center + (camera_position - center) * 0.01], color=(*color, 1), point_width=4, depth_test=True)
+            draw_points_3d([center + (camera_position - center) * 0.01], color=(*color, 1), point_width=4,
+                           depth_test=True)
 
     elif snap_type == 'MIDPOINTS':
         if face_index < len(data.polygons):
             target_polygon = data.polygons[face_index]
             camera_position = context.space_data.region_3d.view_matrix.inverted().translation
-            midpoints=[]
+            midpoints = []
             for loop_index in range(0, target_polygon.loop_total):
                 current_loop = data.loops[target_polygon.loop_start + loop_index]
                 if allowed_indices is not None and current_loop.edge_index not in allowed_indices:
                     continue
                 loop_second = data.loops[target_polygon.loop_start + ((loop_index + 1) % target_polygon.loop_total)]
-                midpoint = obj.matrix_world@((data.vertices[current_loop.vertex_index].co +
-                                              data.vertices[loop_second.vertex_index].co)/2)
-                midpoints.append(midpoint+(camera_position - midpoint) * 0.01)
+                midpoint = obj.matrix_world @ ((data.vertices[current_loop.vertex_index].co +
+                                                data.vertices[loop_second.vertex_index].co) / 2)
+                midpoints.append(midpoint + (camera_position - midpoint) * 0.01)
             draw_points_3d(midpoints, color=(*color, 1), point_width=4, depth_test=True)
-
