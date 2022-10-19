@@ -25,14 +25,16 @@ Check the [Release Page](https://github.com/JulienHeijmans/quicksnap/releases) t
 * With the option 'Use vertices Auto-Merge in Edit mode' enabled, vertices will merge automatically with vertices at the same location after a snap.
 
     ![auto-merge](https://user-images.githubusercontent.com/35562774/196421064-38042819-71df-452c-955c-cbf34977f6d9.gif)
+    ![image](https://user-images.githubusercontent.com/35562774/196762927-2d5b9616-748a-4b21-8ae9-984503721586.png)
 
 * Constrain the translation on a single axis or a plane using (Shift+)X,Y,Z hotkeys
 * Automatically display wireframe of the mesh you are snapping to and the wireframe of the object right under the mouse (Can be turned off)
 * Snap onto visible and non visible points (Points closer to the camera are prioritized)
 * Highlight target vertex edges, as well as potential target edge midpoint and target facecenters for better readability
     ![target_highlight](https://user-images.githubusercontent.com/35562774/196428455-6ba30a31-faeb-4c7c-9dbc-9b3dcca08af3.gif)
-* An Add-On updater allows you to update the addon from within the preference menu
+* The addon includes the [Blender Addon Updater](https://github.com/CGCookie/blender-addon-updater) that allows to update the addon easily from within Blender. You will also be notified if a new version has been released. You can enable/disable that behaviour in the addon preferences.
 
+    ![image](https://user-images.githubusercontent.com/35562774/196763149-11ec36c4-5b95-43fe-a3f5-1bfd68f5f3a9.png)
 
 
 ## Installation
