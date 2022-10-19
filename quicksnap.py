@@ -1,7 +1,7 @@
-﻿import bmesh
+﻿import time
+import bmesh
 import bpy
 import logging
-import mathutils
 from bpy_extras import view3d_utils
 from mathutils import Vector
 
@@ -81,6 +81,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.update(context, region)
         self.clickdrag = True
         self.last_event = None
+        self.clicktime = 0
         context.area.header_text_set(f"QuickSnap: Pick a vertex/point from the selection to start move-snapping")
         self.detect_hotkey()
         return True
@@ -373,6 +374,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                          context.space_data.region_3d)
 
     def __init__(self):
+        self.clicktime = 0
         self.last_event = None
         self.clickdrag = None
         self.ignore_modifiers = None
@@ -483,7 +485,10 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             return {'CANCELLED'}
 
         elif event.type == 'LEFTMOUSE' and not self.menu_open:  # Confirm
-            if event.value != 'PRESS' and self.last_event == event.type:
+            if event.value == 'PRESS':
+                self.clicktime = time.time()
+            elif self.last_event == event.type or time.time()-self.clicktime <= 0.10:
+                # Detect single clicks: either if mouse press was last event or if press was less than 0.1s ago
                 self.clickdrag = False
 
             if self.current_state == State.IDLE and self.closest_source_id >= 0 and self.closest_actionable:
@@ -507,12 +512,10 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
         if event.type != 'TIMER':
             self.last_event = event.type
-        # elif self.current_state == State.SOURCE_PICKED:
-        #     # update mouse position when moving camera with target picked.
-        #     self.target2d = (event.mouse_region_x, event.mouse_region_y)
 
         # Allow navigation
         if event.type in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+            self.update_mouse_position(context, event)
             return {'PASS_THROUGH'}
 
         return {'RUNNING_MODAL'}
