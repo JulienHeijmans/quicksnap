@@ -55,9 +55,14 @@ Check the [Release Page](https://github.com/JulienHeijmans/quicksnap/releases) t
 * Select the object or the vertices/edges/faces/curve points you want to move
 * Enable the tool using the hotkey (Ctrl+Shift+V by default)
 * With the tool enabled use the same hotkey (Ctrl+Shift+V by default) to open the pie menu and chose what you snap from/to (Vertices and curve points / edge midpoints / face centers)
-* Move the mouse over the point you want to snap FROM
-* Click an hold the right mouse button, mouve the mouse over the point you want to snap TO
-* Release the mouse
+* To snap you have two options:
+  * Click and drag:  
+    * Move the mouse over the point you want to snap FROM
+    * Click an hold the right mouse button, mouve the mouse over the point you want to snap TO
+    * Release the mouse
+  * Two-Clicks:
+    * Click on the point you want to snap FROM
+    * Click on the point you want to snap TO
 
 If you want to cancel the operation:
 * Press Right Mouse Button or ESC key to cancel the translation
