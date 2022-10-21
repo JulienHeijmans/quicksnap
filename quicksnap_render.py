@@ -200,6 +200,10 @@ def draw_callback_2d(self, context):
                 if self.settings.draw_rubberband:
                     draw_line_2d(source_x, source_y, target_x, target_y, line_width=1, color=color)
 
+    elif self.current_state == State.IDLE:
+        # Draw grey square when tool is enabled, additional indication that the tool is active
+        draw_square_2d(self.mouse_position[0], self.mouse_position[1], 7, color=(1, 1, 1, 0.3), point_width=0)
+
 
 def draw_snap_axis(self, context):
     """
