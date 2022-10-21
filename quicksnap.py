@@ -530,6 +530,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         if not self.menu_open and event_type == self.hotkey_type and event.shift == self.hotkey_shift \
                 and event.ctrl == self.hotkey_ctrl and event.alt == self.hotkey_alt and self.current_state == State.IDLE:
             self.menu_open = True
+            logger.info(f"Pie menu called.")
             bpy.ops.wm.call_menu_pie(name="VIEW3D_MT_PIE_quicksnap")
         elif event_type == 'X':
             if event.shift:
@@ -714,6 +715,9 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         pass
 
     def detect_hotkey(self):
+        logger.info(
+            f"Detecting current hotkey")
+
         key_config = bpy.context.window_manager.keyconfigs.addon
         categories = set([cat for (cat, key) in addon_keymaps])
         id_names = [key.idname for (cat, key) in addon_keymaps]
@@ -726,6 +730,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     self.hotkey_ctrl = active_key.ctrl
                     self.hotkey_shift = active_key.shift
                     self.hotkey_alt = active_key.alt
+                    logger.info(f"Tool hotkey stored: Ctrl:{self.hotkey_ctrl} - Shift:{self.hotkey_shift} - Alt:{self.hotkey_alt} - Key:{self.hotkey_type}")
         pass
 
 
