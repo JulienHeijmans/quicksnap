@@ -155,7 +155,7 @@ def draw_callback_2d(self, context):
     # logger.info("draw_callback_2D")
     if self.closest_source_id >= 0:
         source_position_3d = self.snapdata_source.world_space[self.closest_source_id]
-
+        #()
         source_position_2d = bpy_extras.view3d_utils.location_3d_to_region_2d(context.region,
                                                                               context.space_data.region_3d,
                                                                               source_position_3d)
@@ -293,10 +293,13 @@ def draw_callback_3d(self, context):
             if not self.settings.ignore_modifiers and self.hover_object != '' and \
                     self.settings.display_potential_target_points:
                 if self.hover_object not in self.source_allowed_indices:
-                    allowed_indices = self.snapdata_source.indices[:self.snapdata_source.added_points_np]
-                    object_indices = self.snapdata_source.object_id[:self.snapdata_source.added_points_np]
-                    self.source_allowed_indices[self.hover_object] = allowed_indices[
-                        object_indices == self.snapdata_source.scene_meshes.index(self.hover_object)]
+                    if not (self.no_selection and self.object_mode):
+                        allowed_indices = self.snapdata_source.indices[:self.snapdata_source.added_points_np]
+                        object_indices = self.snapdata_source.object_id[:self.snapdata_source.added_points_np]
+                        self.source_allowed_indices[self.hover_object] = allowed_indices[
+                            object_indices == self.snapdata_source.scene_meshes.index(self.hover_object)]
+                    else:
+                        self.source_allowed_indices[self.hover_object] = None
                 draw_face_center(context,
                                  target_object=self.hover_object,
                                  face_index=self.target_face_index,
@@ -391,6 +394,8 @@ def draw_edge_highlight(context,
                         opacity=1
                         ):
     if target_id >= 0:
+        if len(snapdata.indices) <= target_id:
+            return
         vert_index = snapdata.indices[target_id]
         if vert_index < 0:
             return
@@ -430,6 +435,8 @@ def draw_edge_highlight(context,
             elif snapdata.snap_type == 'MIDPOINTS':
                 verts = data.vertices
                 edges = data.edges
+                if len(edges) <= vert_index:
+                    return
                 highlight_data[target_object][vert_index] = {}
                 highlight_data[target_object][vert_index]["edges"] = []
                 highlight_data[target_object][vert_index]["edges"].append(
@@ -459,6 +466,8 @@ def draw_edge_highlight(context,
                 highlight_data[target_object][vert_index]["edges"] = []
                 highlight_data[target_object][vert_index]["face_co"] = []
                 highlight_data[target_object][vert_index]["face_indices"] = []
+                if len(polygons) <= vert_index:
+                    return
                 poly = polygons[vert_index]
                 region3d = context.space_data.region_3d
                 camera_position = region3d.view_matrix.inverted().translation
@@ -520,16 +529,13 @@ def draw_face_center(context,
                      color):
     if face_index < 0 or snap_type == 'POINTS' or target_object == '':
         return
-
     obj = bpy.data.objects[target_object]
     if obj.type != 'MESH':
         return
-
     if ignore_modifiers:
         data = obj.data
     else:
         data = obj.evaluated_get(context.evaluated_depsgraph_get()).data
-
     if snap_type == 'FACES':
         # and face_index in allowed_indices
         # print(f"face index:{face_index}")

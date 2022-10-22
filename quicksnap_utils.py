@@ -1,6 +1,8 @@
 ﻿import bpy, mathutils, logging
 from mathutils import Vector
 from enum import Enum
+from bpy_extras import view3d_utils
+import numpy as np
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
 logger = logging.getLogger(__name_addon__)
@@ -28,8 +30,8 @@ def transform_worldspace_coord2d(world_space_coord, region, region3d):
 
 
 def get_selection_objects(context):
-    if context.mode == 'EDIT_MESH':
-        return [obj for obj in context.objects_in_mode if obj.visible_get()]
+    if 'EDIT' in context.mode:
+        return [context.edit_object]
     else:
         return [obj for obj in context.selected_objects if obj.visible_get()]
 
@@ -328,7 +330,7 @@ def translate_curvepoints_worldspace(obj, backup_data, translation):
     pass
 
 
-def has_points_selected(context, selected_meshes):
+def has_points_selected(selected_meshes):
     """
     Returns True if any point of the selected meshes is selected.
     """
@@ -348,3 +350,52 @@ def has_points_selected(context, selected_meshes):
                     if point.select:
                         return True
     return False
+
+
+mouse_pointer_offsets = [
+    Vector((-40, -40)),
+    Vector((-40, 0)),
+    Vector((-40, 40)),
+    Vector((0, 40)),
+    Vector((40, 40)),
+    Vector((40, 0)),
+    Vector((40, -40)),
+    Vector((0, -40))
+]
+
+
+def check_close_objects(context, region, depsgraph, mouse_position):
+    """
+    Cast 8 rays around the mouse, returns the hit objects.
+    """
+    mouse_position = Vector(mouse_position)
+    points = [mouse_position]
+    points.extend([mouse_position + point for point in mouse_pointer_offsets])
+    hit_objects = []
+    # logger.info(f"check_close_objects: {points}")
+    for point in points:
+        view_position = view3d_utils.region_2d_to_origin_3d(region, context.space_data.region_3d, point)
+        mouse_vector = view3d_utils.region_2d_to_vector_3d(region, context.space_data.region_3d, point)
+        (hit, _, _, _, obj, *_) = context.scene.ray_cast(depsgraph, origin=view_position,
+                                                         direction=mouse_vector)
+        if hit:
+            hit_objects.append(obj)
+    # logger.info(f"hit_objects: {hit_objects}")
+    return hit_objects
+
+
+def set_select_all_points(object_names, selected=False):
+    for obj_name in object_names:
+        obj = bpy.data.objects[obj_name]
+        if obj.type == 'MESH':
+            bpy.ops.object.mode_set(mode='OBJECT')
+            obj.data.polygons.foreach_set('select', np.full(len(obj.data.polygons), selected))
+            obj.data.edges.foreach_set('select', np.full(len(obj.data.edges), selected))
+            obj.data.vertices.foreach_set('select', np.full(len(obj.data.vertices), selected))
+            bpy.ops.object.mode_set(mode='EDIT')
+            pass
+        elif obj.type == 'CURVE':
+            for spline in obj.data.splines:
+                spline.points.foreach_set('select', np.full(len(spline.points), selected))
+                spline.bezier_points.foreach_set('select_control_point', np.full(len(spline.bezier_points), selected))
+            pass
