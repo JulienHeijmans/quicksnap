@@ -44,6 +44,15 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.object_mode = bpy.context.active_object.mode == 'OBJECT'
         if not self.object_mode and not quicksnap_utils.has_points_selected(self.selection_objects):
             self.no_selection = True
+
+        # Hide objects to ignore if we are in local view.
+        if context.space_data.local_view is not None:
+            all_scene_objects = [obj for obj in context.scene.objects if not obj.hide_get()]
+            ignored_objs = set([obj for obj in all_scene_objects if obj not in context.visible_objects])
+            self.ignored_obj_names = set([obj.name for obj in ignored_objs])
+            for obj in ignored_objs:
+                obj.hide_set(True)
+
         # Create SnapData objects that will store all the vertex/point info (World space, view space, and kdtree to
         # search the closest point)
         self.snapdata_source = SnapData(context, region, self.settings, self.selection_objects,
@@ -198,8 +207,10 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         # Update 3DView camera information
         region3d = context.space_data.region_3d
         self.camera_position = region3d.view_matrix.inverted().translation
-        self.mouse_vector = view3d_utils.region_2d_to_vector_3d(region, context.space_data.region_3d,
+        self.mouse_position_world = view3d_utils.region_2d_to_origin_3d(region, region.data, self.mouse_position)
+        self.mouse_vector = view3d_utils.region_2d_to_vector_3d(region, region.data,
                                                                 self.mouse_position)
+
         mouse_coord_screen_flat = Vector((self.mouse_position[0], self.mouse_position[1], 0))
 
         depsgraph = context.evaluated_depsgraph_get()
@@ -216,7 +227,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             # Find object under the mouse
             (direct_hit, _, _, self.target_face_index, direct_hit_object, _) = context.scene.ray_cast(
                 context.evaluated_depsgraph_get(),
-                origin=self.camera_position,
+                origin=self.mouse_position_world,
                 direction=self.mouse_vector)
             # If found, we push this object on top of the stack of objects to process
             if direct_hit and (direct_hit_object.name in self.selection_objects or (self.no_selection and self.object_mode)):
@@ -328,10 +339,10 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             else:
                 # The 3D location in this direction
                 if len(self.snapping) == 0 or not self.snapping_local:
-                    self.target = quicksnap_utils.get_target_free(origin, self.camera_position, self.mouse_vector,
+                    self.target = quicksnap_utils.get_target_free(origin, self.mouse_position_world, self.mouse_vector,
                                                                   self.snapping)
                 else:
-                    self.target = quicksnap_utils.get_target_free(origin, self.camera_position, self.mouse_vector,
+                    self.target = quicksnap_utils.get_target_free(origin, self.mouse_position_world, self.mouse_vector,
                                                                   self.snapping,
                                                                   bpy.data.objects[self.selection_objects[0]])
 
@@ -350,6 +361,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
     def __init__(self):
         self.no_selection = False
         self.no_selection_target = None
+        self.mouse_position_world = None
+        self.ignored_obj_names = set()
         self.clicktime = 0
         self.last_event = None
         self.clickdrag = None
@@ -639,6 +652,9 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         if revert:
             self.revert_data(context, apply=True)
 
+        if context.space_data.local_view is not None:
+            for obj_name in self.ignored_obj_names:
+                bpy.data.objects[obj_name].hide_set(False)
         self.set_object_display("", "")
         context.area.header_text_set(None)
         if self.object_mode:
