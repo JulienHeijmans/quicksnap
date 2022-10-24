@@ -359,6 +359,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                          context.space_data.region_3d)
 
     def __init__(self):
+        self.view_distance = None
         self.no_selection = False
         self.no_selection_target = None
         self.mouse_position_world = None
@@ -430,7 +431,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         """
         region3d = context.space_data.region_3d
         if self.camera_position == region3d.view_matrix.inverted().translation \
-                and self.perspective_matrix == region3d.perspective_matrix:
+                and self.perspective_matrix == region3d.perspective_matrix \
+                and self.view_distance == region3d.view_distance:
             return
         logger.info("refresh data")
         self.camera_position = region3d.view_matrix.inverted().translation
