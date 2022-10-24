@@ -756,12 +756,12 @@ class SnapData:
             if self.snap_type == 'POINTS':
                 obj.data.vertices[self.indices[point_index]].select = True
             elif self.snap_type == 'MIDPOINTS':
-                vert_id_a = obj.data.edges[point_index].vertices[0]
-                vert_id_b = obj.data.edges[point_index].vertices[1]
+                vert_id_a = obj.data.edges[self.indices[point_index]].vertices[0]
+                vert_id_b = obj.data.edges[self.indices[point_index]].vertices[1]
                 obj.data.vertices[vert_id_a].select = True
                 obj.data.vertices[vert_id_b].select = True
             elif self.snap_type == 'FACES':
-                poly_vertices = obj.data.polygons[point_index].vertices
+                poly_vertices = obj.data.polygons[self.indices[point_index]].vertices
                 for vert_id in poly_vertices:
                     obj.data.vertices[vert_id].select = True
         elif obj.type == 'CURVE':
