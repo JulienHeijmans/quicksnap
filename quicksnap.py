@@ -41,7 +41,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         if not self.selection_objects or len(self.selection_objects) == 0:
             self.no_selection = True
 
-        self.object_mode = bpy.context.active_object.mode == 'OBJECT'
+        self.object_mode = context.active_object is None or context.active_object.mode == 'OBJECT'
         if not self.object_mode and not quicksnap_utils.has_points_selected(self.selection_objects):
             self.no_selection = True
 
@@ -660,10 +660,12 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.set_object_display("", "")
         context.area.header_text_set(None)
         if self.object_mode:
-            bpy.ops.object.mode_set(mode='OBJECT')
+            if context.active_object is not None:
+                bpy.ops.object.mode_set(mode='OBJECT')
             bpy.context.window.cursor_set("DEFAULT")
         else:
-            bpy.ops.object.mode_set(mode='EDIT')
+            if context.active_object is not None:
+                bpy.ops.object.mode_set(mode='EDIT')
             bpy.context.window.cursor_set("CROSSHAIR")
         bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
         bpy.types.SpaceView3D.draw_handler_remove(self._handle_3d, 'WINDOW')

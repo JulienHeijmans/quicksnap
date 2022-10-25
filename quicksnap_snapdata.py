@@ -218,7 +218,7 @@ class SnapData:
         self.no_selection = no_selection
         self.settings = settings
         self.is_origin_snapdata = is_origin
-        self.object_mode = context.active_object.mode == 'OBJECT'
+        self.object_mode = context.active_object is None or context.active_object.mode == 'OBJECT'
         # print(f"init - is origin:{is_origin} - no selection={no_selection} - self.object_mode={self.object_mode}")
         # print(f"selected_meshes")
         # print(selected_meshes)

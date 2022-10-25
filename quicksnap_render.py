@@ -155,7 +155,6 @@ def draw_callback_2d(self, context):
     # logger.info("draw_callback_2D")
     if self.closest_source_id >= 0:
         source_position_3d = self.snapdata_source.world_space[self.closest_source_id]
-        #()
         source_position_2d = bpy_extras.view3d_utils.location_3d_to_region_2d(context.region,
                                                                               context.space_data.region_3d,
                                                                               source_position_3d)
@@ -352,7 +351,7 @@ def draw_callback_3d(self, context):
                                      allowed_indices=self.target_allowed_indices[self.hover_object],
                                      snap_type=self.snapdata_target.snap_type,
                                      ignore_modifiers=self.settings.ignore_modifiers or (
-                                                 is_selection and not self.object_mode),
+                                             is_selection and not self.object_mode),
                                      color=context.preferences.themes[0].view_3d.vertex
                                      )
             if self.closest_target_id in self.snapdata_target.origins_map:
@@ -376,10 +375,19 @@ def draw_callback_3d(self, context):
                                     highlight_data=self.target_highlight_data,
                                     npdata=self.target_npdata,
                                     ignore_modifiers=self.settings.ignore_modifiers or (
-                                                self.target_object in self.selection_objects and not self.object_mode),
+                                            self.target_object in self.selection_objects and not self.object_mode),
                                     width=self.settings.edge_highlight_width,
                                     color=self.settings.edge_highlight_color_target,
                                     opacity=self.settings.edge_highlight_opacity)
+
+
+def add_camera_offset(co, camera_position, camera_vector, is_ortho):
+    cam_point_vector = camera_position - co
+    if is_ortho:
+        # return co
+        return co - camera_vector * np.sqrt(cam_point_vector.dot(cam_point_vector)) * 0.005
+    else:
+        return co + cam_point_vector * 0.01
 
 
 def draw_edge_highlight(context,
@@ -471,9 +479,11 @@ def draw_edge_highlight(context,
                 poly = polygons[vert_index]
                 region3d = context.space_data.region_3d
                 camera_position = region3d.view_matrix.inverted().translation
+                camera_vector = region3d.view_rotation @ Vector((0.0, 0.0, -1.0))
+                is_ortho = region3d.view_perspective == 'ORTHO'
 
-                verts_co = {}
                 vert_local_index = {}
+                verts_co = {}
                 for idx in range(0, poly.loop_total):
                     current_loop = poly.loop_start + idx
                     loop_second = poly.loop_start + ((idx + 1) % poly.loop_total)
@@ -481,15 +491,20 @@ def draw_edge_highlight(context,
                     vert_index_b = loops[loop_second].vertex_index
                     if vert_index_a not in verts_co:
                         verts_co[vert_index_a] = matrix @ verts[vert_index_a].co
-                        verts_co[vert_index_a] = verts_co[vert_index_a] + (
-                                    camera_position - verts_co[vert_index_a]) * 0.01
+                        verts_co[vert_index_a] = add_camera_offset(verts_co[vert_index_a],
+                                                                   camera_position,
+                                                                   camera_vector,
+                                                                   is_ortho)
                         new_index = len(highlight_data[target_object][vert_index]["face_co"])
                         vert_local_index[vert_index_a] = new_index
                         highlight_data[target_object][vert_index]["face_co"].append(verts_co[vert_index_a])
                     if vert_index_b not in verts_co:
                         verts_co[vert_index_b] = matrix @ verts[vert_index_b].co
-                        verts_co[vert_index_b] = verts_co[vert_index_b] + (
-                                    camera_position - verts_co[vert_index_b]) * 0.01
+                        verts_co[vert_index_b] = add_camera_offset(verts_co[vert_index_b],
+                                                                   camera_position,
+                                                                   camera_vector,
+                                                                   is_ortho)
+
                         new_index = len(highlight_data[target_object][vert_index]["face_co"])
                         vert_local_index[vert_index_b] = new_index
                         highlight_data[target_object][vert_index]["face_co"].append(verts_co[vert_index_b])
@@ -536,6 +551,11 @@ def draw_face_center(context,
         data = obj.data
     else:
         data = obj.evaluated_get(context.evaluated_depsgraph_get()).data
+
+    region3d = context.space_data.region_3d
+    camera_position = region3d.view_matrix.inverted().translation
+    camera_vector = region3d.view_rotation @ Vector((0.0, 0.0, -1.0))
+    is_ortho = region3d.view_perspective == 'ORTHO'
     if snap_type == 'FACES':
         # and face_index in allowed_indices
         # print(f"face index:{face_index}")
@@ -545,8 +565,11 @@ def draw_face_center(context,
             center = obj.matrix_world @ target_polygon.center
             region3d = context.space_data.region_3d
             camera_position = region3d.view_matrix.inverted().translation
-
-            draw_points_3d([center + (camera_position - center) * 0.01], color=(*color, 1), point_width=4,
+            center = add_camera_offset(center,
+                                       camera_position,
+                                       camera_vector,
+                                       is_ortho)
+            draw_points_3d([center], color=(*color, 1), point_width=4,
                            depth_test=True)
 
     elif snap_type == 'MIDPOINTS':
@@ -561,5 +584,9 @@ def draw_face_center(context,
                 loop_second = data.loops[target_polygon.loop_start + ((loop_index + 1) % target_polygon.loop_total)]
                 midpoint = obj.matrix_world @ ((data.vertices[current_loop.vertex_index].co +
                                                 data.vertices[loop_second.vertex_index].co) / 2)
-                midpoints.append(midpoint + (camera_position - midpoint) * 0.01)
+                midpoint = add_camera_offset(midpoint,
+                                             camera_position,
+                                             camera_vector,
+                                             is_ortho)
+                midpoints.append(midpoint)
             draw_points_3d(midpoints, color=(*color, 1), point_width=4, depth_test=True)

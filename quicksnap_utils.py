@@ -90,15 +90,18 @@ def set_object_mode_if_needed():
     Set context to object mode, returns the previous mode.
     """
     # logger.info("entering object mode if needed")
-    mode = f'{bpy.context.active_object.mode}'
-    if mode == 'EDIT':
+    if bpy.context.active_object is not None:
+        mode = f'{bpy.context.active_object.mode}'
+    else:
+        mode = 'OBJECT'
+    if mode != 'OBJECT':
         # logger.info('Going to Object Mode')
         bpy.ops.object.mode_set(mode='OBJECT')
     return mode
 
 
 def revert_mode(previous_mode):
-    if bpy.context.active_object.mode != previous_mode:
+    if bpy.context.active_object is not None and bpy.context.active_object.mode != previous_mode:
         bpy.ops.object.mode_set(mode=previous_mode)
 
 
