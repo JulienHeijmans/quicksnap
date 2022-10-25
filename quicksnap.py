@@ -436,7 +436,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             return
         logger.info("refresh data")
         self.camera_position = region3d.view_matrix.inverted().translation
-
+        self.view_distance = region3d.view_distance
         self.perspective_matrix = context.space_data.region_3d.perspective_matrix
         self.perspective_matrix_inverse = self.perspective_matrix.inverted()
         self.init_snap_data(context, region, self.current_state == State.IDLE, True)
