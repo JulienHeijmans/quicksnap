@@ -185,13 +185,16 @@ def draw_points_3d(coords, color=(1, 1, 0, 1), point_width=3, depth_test=False):
         bgl.glDisable(bgl.GL_DEPTH_TEST)
 
 
+ui_scale = bpy.context.preferences.system.ui_scale
+
+
 def draw_callback_2d(self, context):
     if self.current_state == State.IDLE:
-        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 30, image="BG")
-        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 20, image=self.snapdata_source.snap_type)
+        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 22*ui_scale, image="BG")
+        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 16*ui_scale, image=self.snapdata_source.snap_type)
     elif self.current_state == State.SOURCE_PICKED:
-        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 30, image="BG")
-        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 20, image=self.snapdata_target.snap_type)
+        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 22*ui_scale, image="BG")
+        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 16*ui_scale, image=self.snapdata_target.snap_type)
 
     # logger.info("draw_callback_2D")
     if self.closest_source_id >= 0:
