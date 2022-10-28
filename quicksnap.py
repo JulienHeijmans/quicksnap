@@ -47,7 +47,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
         # Hide objects to ignore if we are in local view.
         if context.space_data.local_view is not None:
-            all_scene_objects = [obj for obj in context.scene.objects if not obj.hide_get()]
+            all_scene_objects = [obj for obj in context.view_layer.objects if not obj.hide_get()]
             ignored_objs = set([obj for obj in all_scene_objects if obj not in context.visible_objects])
             self.ignored_obj_names = set([obj.name for obj in ignored_objs])
             for obj in ignored_objs:
@@ -359,6 +359,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                          context.space_data.region_3d)
 
     def __init__(self):
+        self.view_distance = None
         self.no_selection = False
         self.no_selection_target = None
         self.mouse_position_world = None
@@ -430,11 +431,12 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         """
         region3d = context.space_data.region_3d
         if self.camera_position == region3d.view_matrix.inverted().translation \
-                and self.perspective_matrix == region3d.perspective_matrix:
+                and self.perspective_matrix == region3d.perspective_matrix \
+                and self.view_distance == region3d.view_distance:
             return
         logger.info("refresh data")
         self.camera_position = region3d.view_matrix.inverted().translation
-
+		self.view_distance = context.space_data.region_3d.view_distance
         self.perspective_matrix = context.space_data.region_3d.perspective_matrix
         self.perspective_matrix_inverse = self.perspective_matrix.inverted()
         self.init_snap_data(context, region, self.current_state == State.IDLE, True)
