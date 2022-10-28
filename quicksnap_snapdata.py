@@ -731,8 +731,8 @@ class SnapData:
         (direct_hit, _, _, target_face_index, direct_hit_object, _) = context.scene.ray_cast(depsgraph,
                                                                                                   origin=camera_position,
                                                                                                   direction=mouse_vector)
-        for obj in selected_objs:
-            bpy.data.objects[obj].select_set(True)
+        # for obj in selected_objs:
+        #     bpy.data.objects[obj].select_set(True)
         if direct_hit:
 
             if self.object_mode and quicksnap_utils.has_parent(direct_hit_object, selected_objs):

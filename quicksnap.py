@@ -217,10 +217,10 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         hover_object = ""
         if self.current_state == State.IDLE:
             if self.no_selection and self.object_mode:
-                if self.no_selection_target is not None:
-                    selection = [self.no_selection_target]
-                else:
-                    selection = []
+                # if self.no_selection_target is not None:
+                #     # selection = [self.no_selection_target]
+                # else:
+                selection = []
 
                 self.snapdata_source.add_nearby_objects(context, region, depsgraph, self.mouse_position,
                                                         self.camera_position, self.mouse_vector, selection)
@@ -245,11 +245,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 self.set_object_display(target_name, hover_object, is_root)
                 if self.object_mode and self.no_selection and self.no_selection_target is None or \
                         self.no_selection_target != target_name:
-                    if self.no_selection_target is not None:
-                        bpy.data.objects[self.no_selection_target].select_set(False)
                     self.no_selection_target = target_name
-                    bpy.data.objects[target_name].select_set(True)
-                    context.view_layer.objects.active = bpy.data.objects[target_name]
                 if self.distance <= 15:
                     self.closest_actionable = True  # Points too far from the mouse are highlighted but can't be moved
                     bpy.context.window.cursor_set("SCROLL_XY")
@@ -258,7 +254,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     bpy.context.window.cursor_set("CROSSHAIR")
             else:
                 if self.object_mode and self.no_selection and self.no_selection_target is not None:
-                    bpy.data.objects[self.no_selection_target].select_set(False)
                     self.no_selection_target = None
                 self.closest_source_id = -1
                 self.closest_vertexid = -1
@@ -482,6 +477,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                         if obj_name is not None:
                             self.selection_objects.append(obj_name)
                             bpy.data.objects[obj_name].select_set(True)
+                            context.view_layer.objects.active = bpy.data.objects[obj_name]
                             self.revert_object_display(obj_name)
                         else:
                             print("Error: Could not find target object.")
