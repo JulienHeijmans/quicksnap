@@ -56,7 +56,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
         # Hide objects to ignore if we are in local view.
         if context.space_data.local_view is not None:
-            all_scene_objects = [obj for obj in context.scene.objects if not obj.hide_get()]
+            all_scene_objects = [obj for obj in context.view_layer.objects if not obj.hide_get()]
             ignored_objs = set([obj for obj in all_scene_objects if obj not in context.visible_objects])
             self.ignored_obj_names = set([obj.name for obj in ignored_objs])
             for obj in ignored_objs:
