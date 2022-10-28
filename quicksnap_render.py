@@ -1,15 +1,17 @@
-﻿import bpy, gpu, blf, bgl, logging, bpy_extras
+﻿import bpy, gpu, blf, bgl, logging, bpy_extras, os
 import numpy as np
 from gpu_extras.batch import batch_for_shader
 from .quicksnap_utils import State
 from .quicksnap_utils import dump
 from mathutils import Vector
+from pathlib import Path
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
 logger = logging.getLogger(__name_addon__)
 
 shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
 square_indices = ((0, 1), (1, 2), (2, 3), (3, 0))
+shader_2d_image = gpu.shader.from_builtin('2D_IMAGE')
 shader_2d_uniform_color = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
 shader_3d_uniform_color = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
 shader_3d_smooth_color = gpu.shader.from_builtin('3D_SMOOTH_COLOR')
@@ -49,6 +51,38 @@ def draw_square_2d(position_x, position_y, size, color=(1, 1, 0, 1), line_width=
     bgl.glDisable(bgl.GL_BLEND)
     bgl.glDisable(bgl.GL_LINE_SMOOTH)
 
+
+def draw_image(position_x=100, position_y=100, size=20, image='MISSING'):
+    halfsize = size*.5
+    vertices = (
+        (position_x - halfsize, position_y - halfsize),
+        (position_x + halfsize, position_y - halfsize),
+        (position_x + halfsize, position_y + halfsize),
+        (position_x - halfsize, position_y + halfsize))
+    bgl.glEnable(bgl.GL_BLEND)
+    texture_path = get_icons_dir() / f'QUICKSNAP_{image}.tif'
+    if not texture_path.exists():
+        texture_path = get_icons_dir() / f'QUICKSNAP_MISSING.tif'
+        if not texture_path.exists():
+            return
+    img = bpy.data.images.load(str(texture_path), check_existing=True)
+    texture = gpu.texture.from_image(img)
+    batch = batch_for_shader(
+        shader_2d_image, 'TRI_FAN',
+        {
+            "pos": vertices,
+            "texCoord": ((0, 0), (1, 0), (1, 1), (0, 1)),
+        },
+    )
+    shader_2d_image.bind()
+    shader_2d_image.uniform_sampler("image", texture)
+    batch.draw(shader_2d_image)
+
+    if image and img.gl_load():
+        raise Exception()
+
+    bpy.data.images.remove(img)
+    bgl.glDisable(bgl.GL_BLEND)
 
 def draw_line_2d(source_x, source_y, target_x, target_y, color=(1, 1, 0, 1), line_width=1):
     if line_width != 1:
@@ -151,11 +185,20 @@ def draw_points_3d(coords, color=(1, 1, 0, 1), point_width=3, depth_test=False):
         bgl.glDisable(bgl.GL_DEPTH_TEST)
 
 
+ui_scale = bpy.context.preferences.system.ui_scale
+
+
 def draw_callback_2d(self, context):
+    if self.current_state == State.IDLE:
+        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 22*ui_scale, image="BG")
+        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 16*ui_scale, image=self.snapdata_source.snap_type)
+    elif self.current_state == State.SOURCE_PICKED:
+        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 22*ui_scale, image="BG")
+        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 16*ui_scale, image=self.snapdata_target.snap_type)
+
     # logger.info("draw_callback_2D")
     if self.closest_source_id >= 0:
         source_position_3d = self.snapdata_source.world_space[self.closest_source_id]
-        #()
         source_position_2d = bpy_extras.view3d_utils.location_3d_to_region_2d(context.region,
                                                                               context.space_data.region_3d,
                                                                               source_position_3d)
@@ -316,9 +359,13 @@ def draw_callback_3d(self, context):
 
                     region3d = context.space_data.region_3d
                     camera_position = region3d.view_matrix.inverted().translation
-                    self.target_bounds[obj_name] = [obj.matrix_world @ Vector(point) for point in bound_points]
-                    self.target_bounds[obj_name] = [point + (camera_position - point) * 0.01 for
-                                                    point in self.target_bounds[obj_name]]
+                    camera_vector = region3d.view_rotation @ Vector((0.0, 0.0, -1.0))
+                    is_ortho = region3d.view_perspective == 'ORTHO'
+                    points = [obj.matrix_world @ Vector(point) for point in bound_points]
+                    self.target_bounds[obj_name] = [add_camera_offset(point,
+                                                                      camera_position,
+                                                                      camera_vector,
+                                                                      is_ortho) for point in points]
                 draw_bounds(self.target_bounds[obj_name], color=(1, 1, 0, 0.8), line_width=1, depth_test=True)
                 return
             if self.settings.highlight_target_vertex_edges:
@@ -352,7 +399,7 @@ def draw_callback_3d(self, context):
                                      allowed_indices=self.target_allowed_indices[self.hover_object],
                                      snap_type=self.snapdata_target.snap_type,
                                      ignore_modifiers=self.settings.ignore_modifiers or (
-                                                 is_selection and not self.object_mode),
+                                             is_selection and not self.object_mode),
                                      color=context.preferences.themes[0].view_3d.vertex
                                      )
             if self.closest_target_id in self.snapdata_target.origins_map:
@@ -363,9 +410,14 @@ def draw_callback_3d(self, context):
 
                     region3d = context.space_data.region_3d
                     camera_position = region3d.view_matrix.inverted().translation
-                    self.target_bounds[obj_name] = [obj.matrix_world @ Vector(point) for point in bound_points]
-                    self.target_bounds[obj_name] = [point + (camera_position - point) * 0.01 for
-                                                    point in self.target_bounds[obj_name]]
+                    camera_vector = region3d.view_rotation @ Vector((0.0, 0.0, -1.0))
+                    is_ortho = region3d.view_perspective == 'ORTHO'
+                    points = [obj.matrix_world @ Vector(point) for point in bound_points]
+                    self.target_bounds[obj_name] = [add_camera_offset(point,
+                                                                      camera_position,
+                                                                      camera_vector,
+                                                                      is_ortho) for point in points]
+
                 draw_bounds(self.target_bounds[obj_name], color=(1, 1, 0, 0.8), line_width=1, depth_test=True)
                 return
             if self.settings.highlight_target_vertex_edges:
@@ -376,10 +428,19 @@ def draw_callback_3d(self, context):
                                     highlight_data=self.target_highlight_data,
                                     npdata=self.target_npdata,
                                     ignore_modifiers=self.settings.ignore_modifiers or (
-                                                self.target_object in self.selection_objects and not self.object_mode),
+                                            self.target_object in self.selection_objects and not self.object_mode),
                                     width=self.settings.edge_highlight_width,
                                     color=self.settings.edge_highlight_color_target,
                                     opacity=self.settings.edge_highlight_opacity)
+
+
+def add_camera_offset(co, camera_position, camera_vector, is_ortho):
+    cam_point_vector = camera_position - co
+    if is_ortho:
+        # return co
+        return co - camera_vector * np.sqrt(cam_point_vector.dot(cam_point_vector)) * 0.005
+    else:
+        return co + cam_point_vector * 0.01
 
 
 def draw_edge_highlight(context,
@@ -471,9 +532,11 @@ def draw_edge_highlight(context,
                 poly = polygons[vert_index]
                 region3d = context.space_data.region_3d
                 camera_position = region3d.view_matrix.inverted().translation
+                camera_vector = region3d.view_rotation @ Vector((0.0, 0.0, -1.0))
+                is_ortho = region3d.view_perspective == 'ORTHO'
 
-                verts_co = {}
                 vert_local_index = {}
+                verts_co = {}
                 for idx in range(0, poly.loop_total):
                     current_loop = poly.loop_start + idx
                     loop_second = poly.loop_start + ((idx + 1) % poly.loop_total)
@@ -481,15 +544,20 @@ def draw_edge_highlight(context,
                     vert_index_b = loops[loop_second].vertex_index
                     if vert_index_a not in verts_co:
                         verts_co[vert_index_a] = matrix @ verts[vert_index_a].co
-                        verts_co[vert_index_a] = verts_co[vert_index_a] + (
-                                    camera_position - verts_co[vert_index_a]) * 0.01
+                        verts_co[vert_index_a] = add_camera_offset(verts_co[vert_index_a],
+                                                                   camera_position,
+                                                                   camera_vector,
+                                                                   is_ortho)
                         new_index = len(highlight_data[target_object][vert_index]["face_co"])
                         vert_local_index[vert_index_a] = new_index
                         highlight_data[target_object][vert_index]["face_co"].append(verts_co[vert_index_a])
                     if vert_index_b not in verts_co:
                         verts_co[vert_index_b] = matrix @ verts[vert_index_b].co
-                        verts_co[vert_index_b] = verts_co[vert_index_b] + (
-                                    camera_position - verts_co[vert_index_b]) * 0.01
+                        verts_co[vert_index_b] = add_camera_offset(verts_co[vert_index_b],
+                                                                   camera_position,
+                                                                   camera_vector,
+                                                                   is_ortho)
+
                         new_index = len(highlight_data[target_object][vert_index]["face_co"])
                         vert_local_index[vert_index_b] = new_index
                         highlight_data[target_object][vert_index]["face_co"].append(verts_co[vert_index_b])
@@ -536,6 +604,11 @@ def draw_face_center(context,
         data = obj.data
     else:
         data = obj.evaluated_get(context.evaluated_depsgraph_get()).data
+
+    region3d = context.space_data.region_3d
+    camera_position = region3d.view_matrix.inverted().translation
+    camera_vector = region3d.view_rotation @ Vector((0.0, 0.0, -1.0))
+    is_ortho = region3d.view_perspective == 'ORTHO'
     if snap_type == 'FACES':
         # and face_index in allowed_indices
         # print(f"face index:{face_index}")
@@ -545,8 +618,11 @@ def draw_face_center(context,
             center = obj.matrix_world @ target_polygon.center
             region3d = context.space_data.region_3d
             camera_position = region3d.view_matrix.inverted().translation
-
-            draw_points_3d([center + (camera_position - center) * 0.01], color=(*color, 1), point_width=4,
+            center = add_camera_offset(center,
+                                       camera_position,
+                                       camera_vector,
+                                       is_ortho)
+            draw_points_3d([center], color=(*color, 1), point_width=4,
                            depth_test=True)
 
     elif snap_type == 'MIDPOINTS':
@@ -561,5 +637,43 @@ def draw_face_center(context,
                 loop_second = data.loops[target_polygon.loop_start + ((loop_index + 1) % target_polygon.loop_total)]
                 midpoint = obj.matrix_world @ ((data.vertices[current_loop.vertex_index].co +
                                                 data.vertices[loop_second.vertex_index].co) / 2)
-                midpoints.append(midpoint + (camera_position - midpoint) * 0.01)
+                midpoint = add_camera_offset(midpoint,
+                                             camera_position,
+                                             camera_vector,
+                                             is_ortho)
+                midpoints.append(midpoint)
             draw_points_3d(midpoints, color=(*color, 1), point_width=4, depth_test=True)
+
+
+def get_icons_dir():
+    return Path(os.path.dirname(__file__)) / "icons"
+
+
+preview_collections = {}
+icon = {}
+# gpu_icons = {}
+# images_icons = {}
+
+def register():
+    import bpy.utils.previews
+    preview_collection = bpy.utils.previews.new()
+    icons_dir = get_icons_dir()
+    for entry in os.scandir(icons_dir):
+        if entry.name.endswith('.png'):
+            name = os.path.splitext(entry.name)[0].replace("quicksnap_", "")
+            preview_collection.load(name.upper(), entry.path, 'IMAGE')
+            # images_icons[name] = bpy.data.images.load(entry.name, check_existing=True)
+            # gpu_icons[name] = gpu.texture.from_image(images_icons[name])
+            # print(f"Loading icon: {name}")
+    for key, value in preview_collection.items():
+        icon[key] = value.icon_id
+
+    if preview_collections.get('icons'):
+        unregister()
+    preview_collections['icons'] = preview_collection
+
+
+def unregister():
+    for preview_collection in preview_collections.values():
+        bpy.utils.previews.remove(preview_collection)
+    preview_collections.clear()
