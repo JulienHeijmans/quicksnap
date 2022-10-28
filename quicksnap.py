@@ -20,11 +20,12 @@ addon_keymaps = []
 class QuickVertexSnapOperator(bpy.types.Operator):
     bl_idname = "object.quick_vertex_snap"
     bl_label = "QuickSnap Tool"
-    bl_options = {'INTERNAL', 'REGISTER', 'UNDO'}
+    bl_options = { 'REGISTER', 'UNDO'}
     bl_description = "Quickly snap selection from/to a selected vertex, curve point, object origin, edge midpoint, face" \
                      " center.\nUse the same keymap to open the tool PIE menu."
 
     def initialize(self, context):
+        self.icons = {}
         addon_updater_ops.check_for_update_background()
         # Get 'WINDOW' region of the context. Useful when the active context region is UI within the 3DView
         region = None
@@ -34,6 +35,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
         if not region:
             return False  # If no window region, cancel the operation.
+
+        self.icon_display_time = time.time()
 
         # Get selection, if false cancel operation
         self.selection_objects = [obj.name for obj in quicksnap_utils.get_selection_objects(context)]
@@ -354,6 +357,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                          context.space_data.region_3d)
 
     def __init__(self):
+        self.icons = None
+        self.icon_display_time = 0
         self.view_distance = None
         self.no_selection = False
         self.no_selection_target = None
@@ -500,6 +505,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     self.snapdata_target.__init__(context, region, self.settings, self.selection_objects,
                                                   quicksnap_utils.get_scene_objects(True))
                 self.current_state = State.SOURCE_PICKED
+                self.icon_display_time = time.time()
                 self.set_object_display("", "")
                 self.update_header(context)
             elif event.value == 'PRESS' or self.clickdrag:  # Disable the tool on mouse release if click dragging.
@@ -540,6 +546,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             logger.info(f"Pie menu called.")
             bpy.ops.wm.call_menu_pie(name="VIEW3D_MT_PIE_quicksnap")
         elif event_type == 'ONE':
+            self.icon_display_time = time.time()
             if self.current_state == State.IDLE:
                 if self.settings.snap_source_type != 'POINTS':
                     self.settings.snap_source_type = 'POINTS'
@@ -549,6 +556,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     self.settings.snap_target_type = 'POINTS'
                     self.handle_pie_menu_closed(context, event, region)
         elif event_type == 'TWO':
+            self.icon_display_time = time.time()
             if self.current_state == State.IDLE:
                 if self.settings.snap_source_type != 'MIDPOINTS':
                     self.settings.snap_source_type = 'MIDPOINTS'
@@ -558,6 +566,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                     self.settings.snap_target_type = 'MIDPOINTS'
                     self.handle_pie_menu_closed(context, event, region)
         elif event_type == 'THREE':
+            self.icon_display_time = time.time()
             if self.current_state == State.IDLE:
                 if self.settings.snap_source_type != 'FACES':
                     self.settings.snap_source_type = 'FACES'
@@ -745,9 +754,13 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         if self.settings.snap_source_type != self.snapdata_source.snap_type or \
                 self.ignore_modifiers != self.settings.ignore_modifiers:
             self.init_snap_data(context, region, True, False)
+            if self.current_state == State.IDLE:
+                self.icon_display_time = time.time()
         if self.settings.snap_target_type != self.snapdata_target.snap_type or \
                 self.ignore_modifiers != self.settings.ignore_modifiers:
             self.init_snap_data(context, region, False, True)
+            if self.current_state == State.SOURCE_PICKED:
+                self.icon_display_time = time.time()
         self.ignore_modifiers = self.settings.ignore_modifiers
         self.update(context,region)
         pass
@@ -859,6 +872,15 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         ],
         default="POINTS", )
 
+    snap_target_type_icon: bpy.props.EnumProperty(
+        name="Display Snap Target Icons",
+        items=[
+            ("ALWAYS", "Always", "", 0),
+            ("FADE", "Fade after 2 seconds", "", 1),
+            ("NEVER", "Never", "", 2)
+        ],
+        default="FADE", )
+
     # addon updater preferences from `__init__`, be sure to copy all of them
     auto_check_update: bpy.props.BoolProperty(
         name="Auto-check for Update",
@@ -904,6 +926,7 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         col.prop(self, "display_target_wireframe")
         col.prop(self, "display_hover_wireframe")
         col.prop(self, "display_potential_target_points")
+        col.prop(self, "snap_target_type_icon")
         col.separator()
         container = col.box().column()
         container.label(text="Target Edge Highlight*:")

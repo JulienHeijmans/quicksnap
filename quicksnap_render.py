@@ -1,10 +1,18 @@
-﻿import bpy, gpu, blf, bgl, logging, bpy_extras, os
+﻿from pathlib import Path
+
+import bgl
+import bpy
+import bpy_extras
+import gpu
+import logging
 import numpy as np
+import os
+import time
 from gpu_extras.batch import batch_for_shader
+from mathutils import Vector
+
 from .quicksnap_utils import State
 from .quicksnap_utils import dump
-from mathutils import Vector
-from pathlib import Path
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
 logger = logging.getLogger(__name_addon__)
@@ -16,6 +24,46 @@ shader_2d_uniform_color = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
 shader_3d_uniform_color = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
 shader_3d_smooth_color = gpu.shader.from_builtin('3D_SMOOTH_COLOR')
 
+shader_2d_image_vertex = '''
+
+    uniform mat4 ModelViewProjectionMatrix;
+
+    in vec2 texCoord;
+    in vec2 pos;
+    out vec2 texCoord_interp;
+
+    void main()
+    {
+      gl_Position = ModelViewProjectionMatrix * vec4(pos.xy, 0.0f, 1.0f);
+      gl_Position.z = 1.0;
+      texCoord_interp = texCoord;
+    }
+
+'''
+shader_2d_image_fragment = '''
+    uniform vec4 color;
+    uniform vec4 color_bg;
+    uniform float fade;
+    in vec2 texCoord_interp;
+    out vec4 fragColor;
+
+    uniform sampler2D image;
+
+    void main()
+    {
+      vec4 texture_sampled=texture(image, texCoord_interp);
+      if(texture_sampled.a>0.6)
+        fragColor = color * texture_sampled;
+      else
+        fragColor = color_bg * texture_sampled;
+      fragColor=vec4(fragColor.r, fragColor.g, fragColor.b, fragColor.a * smoothstep(0,1,fade));
+    }
+
+'''
+shader_2d_image_color = gpu.types.GPUShader(shader_2d_image_vertex, shader_2d_image_fragment)
+icons = {}
+
+
 
 def draw_square_2d(position_x, position_y, size, color=(1, 1, 0, 1), line_width=1, point_width=4):
     """
@@ -24,9 +72,9 @@ def draw_square_2d(position_x, position_y, size, color=(1, 1, 0, 1), line_width=
     if point_width==0: Only draw square.
     """
     if line_width != 1:
-        bgl.glLineWidth(line_width)
-    bgl.glEnable(bgl.GL_BLEND)
-    bgl.glEnable(bgl.GL_LINE_SMOOTH)
+        gpu.state.line_width_set(line_width)
+    gpu.state.blend_set("ALPHA")
+    #bgl.glEnable(bgl.GL_LINE_SMOOTH)
     if line_width > 0:
         vertices = (
             (position_x - size, position_y - size),
@@ -39,56 +87,63 @@ def draw_square_2d(position_x, position_y, size, color=(1, 1, 0, 1), line_width=
         shader.uniform_float("color", color)
         batch.draw(shader)
     if point_width > 0:
-        bgl.glPointSize(point_width)
+        gpu.state.point_size_set(point_width)
         batch = batch_for_shader(shader_2d_uniform_color, 'POINTS', {"pos": [(position_x, position_y)]})
         shader.bind()
         shader.uniform_float("color", color)
         batch.draw(shader)
-        bgl.glPointSize(5)
+        gpu.state.point_size_set(5)
 
     if line_width != 1:
-        bgl.glLineWidth(1)
-    bgl.glDisable(bgl.GL_BLEND)
-    bgl.glDisable(bgl.GL_LINE_SMOOTH)
+        gpu.state.line_width_set(1)
+    gpu.state.blend_set("NONE")
+    #bgl.glDisable(bgl.GL_LINE_SMOOTH)
 
 
-def draw_image(position_x=100, position_y=100, size=20, image='MISSING'):
+def draw_image(self, position_x=100, position_y=100, size=20, image='MISSING', color=(1, 1, 1, 1),
+               color_bg=(0, 0, 0, 1), fade=1):
     halfsize = size*.5
     vertices = (
         (position_x - halfsize, position_y - halfsize),
         (position_x + halfsize, position_y - halfsize),
         (position_x + halfsize, position_y + halfsize),
         (position_x - halfsize, position_y + halfsize))
-    bgl.glEnable(bgl.GL_BLEND)
-    texture_path = get_icons_dir() / f'QUICKSNAP_{image}.tif'
-    if not texture_path.exists():
-        texture_path = get_icons_dir() / f'QUICKSNAP_MISSING.tif'
+    gpu.state.blend_set("ALPHA")
+    if image not in icons:
+        texture_path = get_icons_dir() / f'QUICKSNAP_{image}.tif'
         if not texture_path.exists():
-            return
-    img = bpy.data.images.load(str(texture_path), check_existing=True)
-    texture = gpu.texture.from_image(img)
+            texture_path = get_icons_dir() / f'QUICKSNAP_MISSING.tif'
+            if not texture_path.exists():
+                return
+        bpy.data.images.remove(bpy.data.images[f'QUICKSNAP_{image}.tif'])
+        img = bpy.data.images.load(str(texture_path), check_existing=True)
+        icons[image] = gpu.texture.from_image(img)
     batch = batch_for_shader(
-        shader_2d_image, 'TRI_FAN',
+        shader_2d_image_color, 'TRI_FAN',
         {
             "pos": vertices,
             "texCoord": ((0, 0), (1, 0), (1, 1), (0, 1)),
         },
     )
-    shader_2d_image.bind()
-    shader_2d_image.uniform_sampler("image", texture)
-    batch.draw(shader_2d_image)
+    shader_2d_image_color.bind()
+    shader_2d_image_color.uniform_float("color", color)
+    shader_2d_image_color.uniform_float("color_bg", color_bg)
+    shader_2d_image_color.uniform_float("fade", fade)
+    shader_2d_image_color.uniform_sampler("image", icons[image])
+    batch.draw(shader_2d_image_color)
 
-    if image and img.gl_load():
-        raise Exception()
+    # if image and self.icons[image].gl_load():
+    #     raise Exception()
 
-    bpy.data.images.remove(img)
-    bgl.glDisable(bgl.GL_BLEND)
+    # bpy.data.images.remove(img)
+    # img.reload()
+    gpu.state.blend_set("NONE")
 
 def draw_line_2d(source_x, source_y, target_x, target_y, color=(1, 1, 0, 1), line_width=1):
     if line_width != 1:
-        bgl.glLineWidth(line_width)
-    bgl.glEnable(bgl.GL_BLEND)
-    bgl.glEnable(bgl.GL_LINE_SMOOTH)
+        gpu.state.line_width_set(line_width)
+    gpu.state.blend_set("ALPHA")
+    #bgl.glEnable(bgl.GL_LINE_SMOOTH)
     vertices = (
         (source_x, source_y),
         (target_x, target_y))
@@ -99,18 +154,19 @@ def draw_line_2d(source_x, source_y, target_x, target_y, color=(1, 1, 0, 1), lin
     batch.draw(shader)
 
     if line_width != 1:
-        bgl.glLineWidth(1)
-    bgl.glDisable(bgl.GL_BLEND)
-    bgl.glDisable(bgl.GL_LINE_SMOOTH)
+        gpu.state.line_width_set(1)
+    gpu.state.blend_set("NONE")
+    #bgl.glDisable(bgl.GL_LINE_SMOOTH)
 
 
 def draw_line_3d(source, target, color=(1, 1, 0, 1), line_width=1, depth_test=False):
     if line_width != 1:
-        bgl.glLineWidth(line_width)
-    bgl.glEnable(bgl.GL_BLEND)
-    bgl.glEnable(bgl.GL_LINE_SMOOTH)
+        gpu.state.line_width_set(line_width)
+
+    gpu.state.blend_set("ALPHA")
+    #bgl.glEnable(bgl.GL_LINE_SMOOTH)
     if depth_test:
-        bgl.glEnable(bgl.GL_DEPTH_TEST)
+        gpu.state.depth_test_set("GREATER")
     vertices = (
         (source[0], source[1], source[2]),
         (target[0], target[1], target[2]))
@@ -120,21 +176,21 @@ def draw_line_3d(source, target, color=(1, 1, 0, 1), line_width=1, depth_test=Fa
     shader.uniform_float("color", color)
     batch.draw(shader)
     if line_width != 1:
-        bgl.glLineWidth(1)
-    bgl.glDisable(bgl.GL_BLEND)
-    bgl.glDisable(bgl.GL_LINE_SMOOTH)
+        gpu.state.line_width_set(1)
+    gpu.state.blend_set("NONE")
+    #bgl.glDisable(bgl.GL_LINE_SMOOTH)
     if depth_test:
-        bgl.glDisable(bgl.GL_DEPTH_TEST)
+        gpu.state.depth_test_set("NONE")
 
 
 def draw_line_3d_smooth_blend(source, target, color_a=(1, 0, 0, 1), color_b=(0, 1, 0, 1), line_width=1,
                               depth_test=False):
     if line_width != 1:
-        bgl.glLineWidth(line_width)
-    bgl.glEnable(bgl.GL_BLEND)
-    bgl.glEnable(bgl.GL_LINE_SMOOTH)
+        gpu.state.line_width_set(line_width)
+    gpu.state.blend_set("ALPHA")
+    #bgl.glEnable(bgl.GL_LINE_SMOOTH)
     if depth_test:
-        bgl.glEnable(bgl.GL_DEPTH_TEST)
+        gpu.state.depth_test_set("GREATER")
     vertices = (
         (source[0], source[1], source[2]),
         (target[0], target[1], target[2]))
@@ -144,57 +200,70 @@ def draw_line_3d_smooth_blend(source, target, color_a=(1, 0, 0, 1), color_b=(0, 
     shader_3d_smooth_color.bind()
     batch.draw(shader_3d_smooth_color)
     if line_width != 1:
-        bgl.glLineWidth(1)
-    bgl.glDisable(bgl.GL_BLEND)
-    bgl.glDisable(bgl.GL_LINE_SMOOTH)
+        gpu.state.line_width_set(1)
+    gpu.state.blend_set("NONE")
+    #bgl.glDisable(bgl.GL_LINE_SMOOTH)
     if depth_test:
-        bgl.glDisable(bgl.GL_DEPTH_TEST)
+        gpu.state.depth_test_set("NONE")
 
 
 def draw_polygon_smooth_blend(points, indices, color, depth_test):
-    bgl.glEnable(bgl.GL_BLEND)
-    bgl.glEnable(bgl.GL_LINE_SMOOTH)
+    gpu.state.blend_set("ALPHA")
+    #bgl.glEnable(bgl.GL_LINE_SMOOTH)
     if depth_test:
-        bgl.glEnable(bgl.GL_DEPTH_TEST)
+        gpu.state.depth_test_set("GREATER")
     colors = [color] * len(points)
     batch = batch_for_shader(shader_3d_smooth_color, 'TRIS', {"pos": points, "color": colors}, indices=indices)
     shader.uniform_float("color", color)
     shader_3d_smooth_color.bind()
     batch.draw(shader_3d_smooth_color)
 
-    bgl.glDisable(bgl.GL_BLEND)
-    bgl.glDisable(bgl.GL_LINE_SMOOTH)
+    gpu.state.blend_set("NONE")
+    #bgl.glDisable(bgl.GL_LINE_SMOOTH)
     if depth_test:
-        bgl.glDisable(bgl.GL_DEPTH_TEST)
+        gpu.state.depth_test_set("NONE")
 
 
 def draw_points_3d(coords, color=(1, 1, 0, 1), point_width=3, depth_test=False):
-    bgl.glEnable(bgl.GL_BLEND)
+    gpu.state.blend_set("ALPHA")
     if depth_test:
-        bgl.glEnable(bgl.GL_DEPTH_TEST)
+        gpu.state.depth_test_set("LESS")
 
-    bgl.glPointSize(point_width)
+    gpu.state.point_size_set(point_width)
     batch = batch_for_shader(shader_3d_uniform_color, 'POINTS', {"pos": coords})
     shader.bind()
     shader.uniform_float("color", color)
     batch.draw(shader)
-    bgl.glPointSize(5)
+    gpu.state.point_size_set(5)
 
-    bgl.glDisable(bgl.GL_BLEND)
+    gpu.state.blend_set("NONE")
     if depth_test:
-        bgl.glDisable(bgl.GL_DEPTH_TEST)
+        gpu.state.depth_test_set("NONE")
 
 
 ui_scale = bpy.context.preferences.system.ui_scale
+icon_color = {
+    State.IDLE: (0.917, 0.462, 0, .6),
+    State.SOURCE_PICKED: (1, 1, 0, .6)
+}
+
+icon_display_duration = 2
+fade_duration = 0.2
 
 
 def draw_callback_2d(self, context):
-    if self.current_state == State.IDLE:
-        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 22*ui_scale, image="BG")
-        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 16*ui_scale, image=self.snapdata_source.snap_type)
-    elif self.current_state == State.SOURCE_PICKED:
-        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 22*ui_scale, image="BG")
-        draw_image(self.mouse_position[0]+30, self.mouse_position[1]-30, 16*ui_scale, image=self.snapdata_target.snap_type)
+    current_time=time.time()
+    if self.settings.snap_target_type_icon != 'NEVER' and current_time < self.icon_display_time + icon_display_duration or self.settings.snap_target_type_icon == 'ALWAYS':
+        fade = 1
+        if self.settings.snap_target_type_icon == 'FADE' and current_time > self.icon_display_time + \
+                icon_display_duration - fade_duration:
+            fade = (self.icon_display_time - current_time + icon_display_duration) / fade_duration
+        if self.current_state == State.IDLE:
+            draw_image(self, self.mouse_position[0]+30, self.mouse_position[1]-30, 22*ui_scale,
+                       image=self.snapdata_source.snap_type, color=icon_color[self.current_state], fade=fade)
+        elif self.current_state == State.SOURCE_PICKED:
+            draw_image(self, self.mouse_position[0]+30, self.mouse_position[1]-30, 22*ui_scale,
+                       image=self.snapdata_target.snap_type, color=icon_color[self.current_state], fade=fade)
 
     # logger.info("draw_callback_2D")
     if self.closest_source_id >= 0:
@@ -303,11 +372,11 @@ indices_bounds = (
 
 def draw_bounds(points, color=(1, 1, 0, 1), line_width=3, depth_test=False):
     if line_width != 1:
-        bgl.glLineWidth(line_width)
-    bgl.glEnable(bgl.GL_BLEND)
-    bgl.glEnable(bgl.GL_LINE_SMOOTH)
+        gpu.state.line_width_set(line_width)
+    gpu.state.blend_set("ALPHA")
+    #bgl.glEnable(bgl.GL_LINE_SMOOTH)
     if depth_test:
-        bgl.glEnable(bgl.GL_DEPTH_TEST)
+        gpu.state.depth_test_set("GREATER")
     vertices = points
 
     batch = batch_for_shader(shader_3d_uniform_color, 'LINES', {"pos": vertices}, indices=indices_bounds)
@@ -315,11 +384,11 @@ def draw_bounds(points, color=(1, 1, 0, 1), line_width=3, depth_test=False):
     shader_3d_uniform_color.uniform_float("color", color)
     batch.draw(shader_3d_uniform_color)
     if line_width != 1:
-        bgl.glLineWidth(1)
-    bgl.glDisable(bgl.GL_BLEND)
-    bgl.glDisable(bgl.GL_LINE_SMOOTH)
+        gpu.state.line_width_set(1)
+    gpu.state.blend_set("NONE")
+    #bgl.glDisable(bgl.GL_LINE_SMOOTH)
     if depth_test:
-        bgl.glDisable(bgl.GL_DEPTH_TEST)
+        gpu.state.depth_test_set("NONE")
 
 
 def draw_callback_3d(self, context):
@@ -648,32 +717,3 @@ def draw_face_center(context,
 def get_icons_dir():
     return Path(os.path.dirname(__file__)) / "icons"
 
-
-preview_collections = {}
-icon = {}
-# gpu_icons = {}
-# images_icons = {}
-
-def register():
-    import bpy.utils.previews
-    preview_collection = bpy.utils.previews.new()
-    icons_dir = get_icons_dir()
-    for entry in os.scandir(icons_dir):
-        if entry.name.endswith('.png'):
-            name = os.path.splitext(entry.name)[0].replace("quicksnap_", "")
-            preview_collection.load(name.upper(), entry.path, 'IMAGE')
-            # images_icons[name] = bpy.data.images.load(entry.name, check_existing=True)
-            # gpu_icons[name] = gpu.texture.from_image(images_icons[name])
-            # print(f"Loading icon: {name}")
-    for key, value in preview_collection.items():
-        icon[key] = value.icon_id
-
-    if preview_collections.get('icons'):
-        unregister()
-    preview_collections['icons'] = preview_collection
-
-
-def unregister():
-    for preview_collection in preview_collections.values():
-        bpy.utils.previews.remove(preview_collection)
-    preview_collections.clear()
