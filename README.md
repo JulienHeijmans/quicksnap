@@ -18,6 +18,27 @@ Check the [Release Page](https://github.com/JulienHeijmans/quicksnap/releases) t
   * Edges mid-points
   * Face centers
   
+
+    
+* New: You can change the snap target type using hotkeys: 1: Vertices/curve points, 2:Edge centers, 3:Face centers, O: Origins
+* New: An icon close to the mouse let you know the current snap target type. (You can have it always visible, fade after a few seconds, or completely disabled)
+
+    ![hotkey-icon](https://user-images.githubusercontent.com/35562774/199265091-24b63cdf-780b-4aa1-847c-cfb486469356.gif)
+    
+* New: The tool can now be used in orthographic view (Triggered by "5" on the numpad), and in local mode (Triggered by "/" on the numpad, isolates the selection)
+* New: You can use the tool by clicking once on the target and once on the destination (You can move the camera between the two actions), instead of only by using drag&drop
+
+    ![two-click-workflow](https://user-images.githubusercontent.com/35562774/199266031-7d27c422-83dd-4f15-a051-341dd86d6d93.gif)
+    
+* New: The tool now works when no object/point is selected. It behaves differently depending if you are in Edit or in Object mode:
+  * In Object mode the object under the mouse will be moved to the target position
+  
+    ![no_selection_object_mode](https://user-images.githubusercontent.com/35562774/199267351-c29a4a40-bf31-4968-87ef-8a1debe4ebc4.gif)
+  
+  * In edit mode the points under the mouse will be moved, and eventually merged if edit mode auto-merge is enabled.
+  
+    ![no_selection_edit_mode](https://user-images.githubusercontent.com/35562774/199267808-46811c4c-3b9f-456b-84eb-d603e7aba780.gif)
+
 * A pie menu allows you to change the type of point you snap from/to. Use the same hotkey as the one you use ot open the tool to display the menu.
 
     ![pie-menu](https://user-images.githubusercontent.com/35562774/196196537-82078f77-70ab-4929-a36a-6aaf6fe3bfde.gif)
@@ -50,13 +71,16 @@ Check the [Release Page](https://github.com/JulienHeijmans/quicksnap/releases) t
 * Use the same hotkey to display the pie menu
 * Change the tool hotkey from the Add-On settings window
 * Discover the other hotkeys in the add-on settings, and tweak your own preferences
-    ![blender_d6b0hUmPdd](https://user-images.githubusercontent.com/35562774/196420387-3e29abcc-2523-4901-ac9d-bd8a7b9263c4.png)
+    ![image](https://user-images.githubusercontent.com/35562774/199269100-9ae643af-ba5f-4ccd-a1f8-354b186f1c7f.png)
 
 
 ## Use the tool
 * Select the object or the vertices/edges/faces/curve points you want to move
 * Enable the tool using the hotkey (Ctrl+Shift+V by default)
-* With the tool enabled use the same hotkey (Ctrl+Shift+V by default) to open the pie menu and chose what you snap from/to (Vertices and curve points / edge midpoints / face centers)
+* Select the type of point you want to snap from/to, by either:
+  * Usin a hotkey:  1: Vertices/curve points, 2:Edge centers, 3:Face centers, O: Origins
+  * Opening the pie menu (by using the same hotkey as the one to enable the tool (Ctrl+Shift+V by default)) and chose what you snap from/to (Vertices and curve points / edge midpoints / face centers)
+
 * To snap you have two options:
   * Click and drag:  
     * Move the mouse over the point you want to snap FROM
