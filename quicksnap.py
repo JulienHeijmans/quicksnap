@@ -2,12 +2,12 @@
 import bmesh
 import bpy
 import logging
-from bpy_extras import view3d_utils
 from mathutils import Vector
 
 from . import quicksnap_render
 from . import quicksnap_utils
 from .quicksnap_snapdata import SnapData
+from bpy_extras import view3d_utils
 from .quicksnap_utils import State
 from . import addon_updater_ops
 
@@ -18,7 +18,7 @@ addon_keymaps = []
 
 
 class QuickVertexSnapOperator(bpy.types.Operator):
-    bl_idname = "object.quick_vertex_snap"
+    bl_idname = "object.quicksnap"
     bl_label = "QuickSnap Tool"
     bl_options = { 'REGISTER', 'UNDO'}
     bl_description = "Quickly snap selection from/to a selected vertex, curve point, object origin, edge midpoint, face" \
@@ -36,6 +36,21 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         if not region:
             return False  # If no window region, cancel the operation.
 
+        #set log level
+        if self.settings.log_level == 0:
+            logger.setLevel(logging.NOTSET)
+        elif self.settings.log_level == 1:
+            logger.setLevel(logging.INFO)
+            logger.info("QuickSnap: Setting logger level to: INFO")
+            self.report({'INFO'},
+                        f"QuickSnap: Setting logger level to: INFO. Use Ctrl+Shift+TAB to change debug level.")
+        if self.settings.log_level == 2:
+            logger.setLevel(logging.DEBUG)
+            logger.debug("QuickSnap: Setting logger level to: DEBUG")
+            self.report({'INFO'},
+                        f"QuickSnap: Setting logger level to: DEBUG. Use Ctrl+Shift+TAB to change debug level.")
+
+        #icons time
         self.icon_display_time = time.time()
 
         # Get selection, if false cancel operation
@@ -134,10 +149,11 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                               bpy.data.objects[object_name].display_bounds_type)
 
     def revert_object_display(self, object_name):
-        (bpy.data.objects[object_name].show_wire,
-         bpy.data.objects[object_name].show_name,
-         bpy.data.objects[object_name].show_bounds,
-         bpy.data.objects[object_name].display_bounds_type) = self.target_object_display_backup[object_name]
+        if object_name in self.target_object_display_backup:
+            (bpy.data.objects[object_name].show_wire,
+             bpy.data.objects[object_name].show_name,
+             bpy.data.objects[object_name].show_bounds,
+             bpy.data.objects[object_name].display_bounds_type) = self.target_object_display_backup[object_name]
 
     def set_object_display(self, target_object="", hover_object="", is_root=False, mesh_vertid=-1, force=True):
         """
@@ -146,26 +162,25 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         """
         if self.target_object != "":
             self.revert_object_display(self.target_object)
-        if self.hover_object != "" and self.settings.display_hover_wireframe:
+        if self.hover_object != "":
             self.revert_object_display(self.hover_object)
 
         if target_object != "":
             self.store_object_display(target_object)
-
-            bpy.data.objects[target_object].show_wire = self.settings.display_target_wireframe or \
-                                                        self.target_object_display_backup[target_object][0]
+            if self.settings.display_target_wireframe:
+                bpy.data.objects[target_object].show_wire = True
             if is_root:
                 bpy.data.objects[target_object].show_name = True
 
         self.target_object = target_object
         self.target_object_is_root = is_root
 
-        if self.settings.display_hover_wireframe:
-            if hover_object != "":
-                self.store_object_display(hover_object)
+        if hover_object != "" and hover_object != target_object:
+            self.store_object_display(hover_object)
+            if self.settings.display_target_wireframe:
                 bpy.data.objects[hover_object].show_wire = True
 
-            self.hover_object = hover_object
+        self.hover_object = hover_object
         self.closest_vertexid = mesh_vertid
 
     def revert_data(self, context, apply=False):
@@ -219,30 +234,27 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         depsgraph = context.evaluated_depsgraph_get()
         hover_object = ""
         if self.current_state == State.IDLE:
-            if self.no_selection and self.object_mode:
-                # if self.no_selection_target is not None:
-                #     # selection = [self.no_selection_target]
-                # else:
-                selection = []
+            if self.snapdata_source.snap_type != 'ORIGINS':
+                if self.no_selection and self.object_mode:
+                    selection = []
 
-                self.snapdata_source.add_nearby_objects(context, region, depsgraph, self.mouse_position,
-                                                        self.camera_position, self.mouse_vector, selection)
-            # Find object under the mouse
-            (direct_hit, _, _, self.target_face_index, direct_hit_object, _) = context.scene.ray_cast(
-                context.evaluated_depsgraph_get(),
-                origin=self.mouse_position_world,
-                direction=self.mouse_vector)
-            # If found, we push this object on top of the stack of objects to process
-            if direct_hit and (direct_hit_object.name in self.selection_objects or (self.no_selection and self.object_mode)):
-                hover_object = direct_hit_object.name
-                self.snapdata_source.add_object_data(direct_hit_object.name,
-                                                     depsgraph=depsgraph,
-                                                     is_selected=True,
-                                                     set_first_priority=True)
+                    self.snapdata_source.add_nearby_objects(context, region, depsgraph, self.mouse_position, selection)
+                # Find object under the mouse
+                (direct_hit, _, _, self.target_face_index, direct_hit_object, _) = context.scene.ray_cast(
+                    context.evaluated_depsgraph_get(),
+                    origin=self.mouse_position_world,
+                    direction=self.mouse_vector)
+                # If found, we push this object on top of the stack of objects to process
+                if direct_hit and (direct_hit_object.name in self.selection_objects or (self.no_selection and self.object_mode)):
+                    hover_object = direct_hit_object.name
+                    self.snapdata_source.add_object_data(direct_hit_object.name,
+                                                         depsgraph=depsgraph,
+                                                         is_selected=True,
+                                                         set_first_priority=True)
 
             # Find source vert/point the closest to the mouse, change cursor crosshair
             closest = self.snapdata_source.find_closest(mouse_coord_screen_flat,
-                                                        search_origins_only=self.snap_to_origins)
+                                                        search_origins_only=self.snapdata_source.snap_type == 'ORIGINS')
             if closest is not None:
                 (self.closest_source_id, self.distance, target_name, is_root, mesh_vertid) = closest
                 self.set_object_display(target_name, hover_object, is_root)
@@ -267,7 +279,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
         elif self.current_state == State.SOURCE_PICKED:
             # If we are only snapping to origins, only search through origin points.
-            if self.snap_to_origins:
+            if self.snapdata_target.snap_type == 'ORIGINS':
                 closest = self.snapdata_target.find_closest(mouse_coord_screen_flat, search_origins_only=True)
                 if closest is not None:
                     (self.closest_target_id, self.distance, target_object_name, is_root, mesh_vertid) = closest
@@ -286,7 +298,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
                 (direct_hit, direct_hit_object_name, self.target_face_index) = \
                     self.snapdata_target.add_nearby_objects(context, region, depsgraph, self.mouse_position,
-                                                            self.camera_position, self.mouse_vector,
                                                             self.selection_objects)
 
                 if direct_hit:
@@ -399,7 +410,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.closest_target_object = ""
         self.snapdata_target = None
         self.snapdata_source = None
-        self.snap_to_origins = False
         self.object_mode = None
         self.target_object_display_backup = None
         self.target_object_show_bounds_backup = False
@@ -575,6 +585,16 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 if self.settings.snap_target_type != 'FACES':
                     self.settings.snap_target_type = 'FACES'
                     self.handle_pie_menu_closed(context, event, region)
+        elif event_type == 'O':
+            self.icon_display_time = time.time()
+            if self.current_state == State.IDLE:
+                if self.settings.snap_source_type != 'ORIGINS':
+                    self.settings.snap_source_type = 'ORIGINS'
+                    self.handle_pie_menu_closed(context, event, region)
+            elif self.current_state == State.SOURCE_PICKED:
+                if self.settings.snap_target_type != 'ORIGINS':
+                    self.settings.snap_target_type = 'ORIGINS'
+                    self.handle_pie_menu_closed(context, event, region)
 
         elif event_type == 'X':
             if event.shift:
@@ -621,10 +641,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 self.snapping = new_snapping
             self.update(context, region)
             self.apply(context, region)
-        elif event_type == 'O':
-            self.snap_to_origins = not self.snap_to_origins
-            self.update(context, region)
-            self.apply(context, region)
+
         elif event_type == 'W':
             self.settings.display_target_wireframe = not self.settings.display_target_wireframe
             self.set_object_display(self.target_object, self.hover_object, self.target_object_is_root, force=True)
@@ -636,19 +653,25 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         elif event_type == 'TAB' and event.shift and event.ctrl:
             loglevel = logger.level
             if loglevel == logging.NOTSET:
+                self.settings.log_level = 1
                 logger.setLevel(logging.INFO)
-                logger.info("QuickSnap: Setting logger level to: INFO")
+                logger.info("QuickSnap: Setting logger level to: INFO.")
+                logger.info("Use Ctrl+Shift+TAB when QuickSnap is enabled to change debug level.")
                 self.report({'INFO'},
-                            f"QuickSnap: Setting logger level to: INFO. Use Ctrl+Shift+TAB to change debug level.")
+                            f"QuickSnap: Setting logger level to: INFO.\nUse Ctrl+Shift+TAB when QuickSnap is enabled to change debug level.")
             elif loglevel == logging.INFO:
+                self.settings.log_level = 2
                 logger.setLevel(logging.DEBUG)
-                logger.debug("QuickSnap: Setting logger level to: DEBUG")
+                logger.debug("QuickSnap: Setting logger level to: DEBUG.")
+                logger.debug("Use Ctrl+Shift+TAB when QuickSnap is enabled to change debug level.")
                 self.report({'INFO'},
-                            f"QuickSnap: Setting logger level to: DEBUG. Use Ctrl+Shift+TAB to change debug level.")
+                            f"QuickSnap: Setting logger level to: DEBUG.\nUse Ctrl+Shift+TAB when QuickSnap is enabled to change debug level.")
             if loglevel == logging.DEBUG:
+                self.settings.log_level = 0
                 logger.setLevel(logging.NOTSET)
-                self.report({'INFO'}, f"QuickSnap: Disabling debug. Use Ctrl+Shift+TAB to change debug level.")
-                print("QuickSnap: Disabling debug")
+                self.report({'INFO'}, f"QuickSnap: Disabling debug.")
+                self.report({'INFO'}, f"Use Ctrl+Shift+TAB when QuickSnap is enabled to change debug level.")
+                print("QuickSnap: Disabling debug. Use Ctrl+Shift+TAB when QuickSnap is enabled to change debug level.")
         self.update_header(context)
 
     def terminate(self, context, revert=False):
@@ -704,12 +727,9 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         ignore_modifiers_msg = ""
         axis_msg = ""
         snapping_msg = f"Use (Shift+)X/Y/Z to constraint to the world/local axis or plane. Use O to snap to object " \
-                       f"origins. Right Mouse Button/ESC to cancel the operation. "
-        if self.snap_to_origins:
-            snapping_msg = "Snapping to origins only. "
+                       f"origins. 1,2,3 to snap to verts, edge midpoints, face centers. Right Mouse Button/ESC to cancel the operation. "
+
         if len(self.snapping) > 0:
-            if not self.snap_to_origins:
-                snapping_msg = ""
             if len(self.snapping) == 1:
                 snapping_msg = f"{snapping_msg}Constrained on {self.snapping} axis"
             if len(self.snapping) == 2:
@@ -833,7 +853,6 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         ],
         default="ALWAYS", )
     display_target_wireframe: bpy.props.BoolProperty(name="Display target object wireframe", default=True)
-    display_hover_wireframe: bpy.props.BoolProperty(name="Display mouseover object wireframe", default=True)
     highlight_target_vertex_edges: bpy.props.BoolProperty(name="Enable highlighting of target vertex edges*",
                                                           default=True)
     edge_highlight_width: bpy.props.IntProperty(name="Highlight Width", default=2, min=1, max=5)
@@ -859,7 +878,8 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         items=[
             ("POINTS", "Vertices, Curve points", "", 0),
             ("MIDPOINTS", "Edges mid-points", "", 1),
-            ("FACES", "Face centers", "", 2)
+            ("FACES", "Face centers", "", 2),
+            ("ORIGINS", "Objects origins", "", 3)
         ],
         default="POINTS", )
 
@@ -868,7 +888,8 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         items=[
             ("POINTS", "Vertices, Curve points", "", 0),
             ("MIDPOINTS", "Edges mid-points", "", 1),
-            ("FACES", "Face centers", "", 2)
+            ("FACES", "Face centers", "", 2),
+            ("ORIGINS", "Objects origins", "", 3)
         ],
         default="POINTS", )
 
@@ -914,6 +935,11 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         min=0,
         max=59
     )
+    # log level
+    log_level: bpy.props.IntProperty(
+        name='Log Level',
+        default=0
+    )
 
     def draw(self, context=None):
         layout = self.layout
@@ -924,7 +950,6 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         col.prop(self, "snap_objects_origin")
         col.prop(self, "draw_rubberband")
         col.prop(self, "display_target_wireframe")
-        col.prop(self, "display_hover_wireframe")
         col.prop(self, "display_potential_target_points")
         col.prop(self, "snap_target_type_icon")
         col.separator()
@@ -971,7 +996,10 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_Y', "Constraint to Y Plane", shift=True)
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_Z', "Constraint to Z Axis")
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_Z', "Constraint to Z Plane", shift=True)
-        quicksnap_utils.insert_ui_hotkey(col, 'EVENT_O', "Snap to objects origins only")
+        quicksnap_utils.insert_ui_hotkey(col, 'EVENT_1', "Snap from/to vertices and curve points")
+        quicksnap_utils.insert_ui_hotkey(col, 'EVENT_2', "Snap from/to edge mid-points")
+        quicksnap_utils.insert_ui_hotkey(col, 'EVENT_3', "Snap from/to face centers")
+        quicksnap_utils.insert_ui_hotkey(col, 'EVENT_O', "Snap from/to object origins")
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_W', "Enable/Disable wireframe on target object")
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_M', "Enable/Disable 'Ignore Modifiers'")
         quicksnap_utils.insert_ui_hotkey(col, 'EVENT_ESC', "Cancel Snap")
@@ -979,14 +1007,6 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
 
         addon_updater_ops.update_settings_ui(self, context)
 
-
-# class MYADDONNAME_TOOL_mytool(bpy.types.WorkSpaceTool):
-#     bl_idname = "myaddonname.mytool"
-#     bl_space_type='VIEW_3D'
-#     bl_context_mode='OBJECT'
-#     bl_label = "My tool"
-#     bl_icon = "ops.transform.vertex_random"
-#     operator="object.quick_vertex_snap"
 
 
 class VIEW3D_MT_PIE_quicksnap(bpy.types.Menu):
@@ -1039,7 +1059,7 @@ def register():
     key_config = window_manager.keyconfigs.addon
     if key_config:
         export_category = key_config.keymaps.new('3D View', space_type='VIEW_3D', region_type='WINDOW', modal=False)
-        export_key = export_category.keymap_items.new("object.quick_vertex_snap", type='V', value='PRESS', shift=True,
+        export_key = export_category.keymap_items.new("object.quicksnap", type='V', value='PRESS', shift=True,
                                                       ctrl=True)
         addon_keymaps.append((export_category, export_key))
 

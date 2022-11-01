@@ -101,6 +101,9 @@ def draw_square_2d(position_x, position_y, size, color=(1, 1, 0, 1), line_width=
 
 def draw_image(self, position_x=100, position_y=100, size=20, image='MISSING', color=(1, 1, 1, 1),
                color_bg=(0, 0, 0, 1), fade=1):
+    """
+        Draw an icon in the viewport.
+    """
     halfsize = size * .5
     vertices = (
         (position_x - halfsize, position_y - halfsize),
@@ -143,6 +146,9 @@ def draw_image(self, position_x=100, position_y=100, size=20, image='MISSING', c
 
 
 def draw_line_2d(source_x, source_y, target_x, target_y, color=(1, 1, 0, 1), line_width=1):
+    """
+        Draw a 2d line in the viewport.
+    """
     if line_width != 1:
         bgl.glLineWidth(line_width)
     bgl.glEnable(bgl.GL_BLEND)
@@ -163,6 +169,9 @@ def draw_line_2d(source_x, source_y, target_x, target_y, color=(1, 1, 0, 1), lin
 
 
 def draw_line_3d(source, target, color=(1, 1, 0, 1), line_width=1, depth_test=False):
+    """
+        Draw a 3d line in the viewport.
+    """
     if line_width != 1:
         bgl.glLineWidth(line_width)
     bgl.glEnable(bgl.GL_BLEND)
@@ -188,6 +197,9 @@ def draw_line_3d(source, target, color=(1, 1, 0, 1), line_width=1, depth_test=Fa
 
 def draw_line_3d_smooth_blend(source, target, color_a=(1, 0, 0, 1), color_b=(0, 1, 0, 1), line_width=1,
                               depth_test=False):
+    """
+        Draw a smooth blend line in the viewport.
+    """
     if line_width != 1:
         bgl.glLineWidth(line_width)
     bgl.glEnable(bgl.GL_BLEND)
@@ -211,6 +223,9 @@ def draw_line_3d_smooth_blend(source, target, color_a=(1, 0, 0, 1), color_b=(0, 
 
 
 def draw_polygon_smooth_blend(points, indices, color, depth_test):
+    """
+        Draw a smooth blend polygon in the viewport.
+    """
     bgl.glEnable(bgl.GL_BLEND)
     bgl.glEnable(bgl.GL_LINE_SMOOTH)
     if depth_test:
@@ -228,6 +243,9 @@ def draw_polygon_smooth_blend(points, indices, color, depth_test):
 
 
 def draw_points_3d(coords, color=(1, 1, 0, 1), point_width=3, depth_test=False):
+    """
+        Draw a list of points in the viewport.
+    """
     gpu.state.blend_set("ALPHA")
     if depth_test:
         gpu.state.depth_test_set("LESS")
@@ -255,9 +273,13 @@ fade_duration = 0.2
 
 
 def draw_callback_2d(self, context):
+    """
+        Draw all QuickSnap 2D UI: Icons, source/target square. rubberband/
+    """
     current_time = time.time()
     if self.settings.snap_target_type_icon != 'NEVER' and current_time < self.icon_display_time + icon_display_duration or self.settings.snap_target_type_icon == 'ALWAYS':
         fade = 1
+
         if self.settings.snap_target_type_icon == 'FADE' and current_time > self.icon_display_time + \
                 icon_display_duration - fade_duration:
             fade = (self.icon_display_time - current_time + icon_display_duration) / fade_duration
@@ -268,21 +290,17 @@ def draw_callback_2d(self, context):
             draw_image(self, self.mouse_position[0] + 30, self.mouse_position[1] - 30, 22 * ui_scale,
                        image=self.snapdata_target.snap_type, color=icon_color[self.current_state], fade=fade)
 
-    # logger.info("draw_callback_2D")
     if self.closest_source_id >= 0:
         source_position_3d = self.snapdata_source.world_space[self.closest_source_id]
         source_position_2d = bpy_extras.view3d_utils.location_3d_to_region_2d(context.region,
                                                                               context.space_data.region_3d,
                                                                               source_position_3d)
-        # closest_position_2d = self.snapdata_source.region_2d[self.closest_source_id]
         source_x, source_y = source_position_2d[0], source_position_2d[1]
         # Source selection
         if self.current_state == State.IDLE:  # no source picked
-            # logger.info("no source picked")
             draw_square_2d(source_x, source_y, 7)
 
         else:
-
             # logger.info(f"source picked . self.target2d={self.target2d} -  self.settings.draw_rubberband={self.settings.draw_rubberband}")
             if self.closest_target_id >= 0:
                 color = (0, 1, 0, 1)
@@ -374,6 +392,9 @@ indices_bounds = (
 
 
 def draw_bounds(points, color=(1, 1, 0, 1), line_width=3, depth_test=False):
+    """
+        Draw edges of bounds cube. Inputs bounds vertices.
+    """
     if line_width != 1:
         bgl.glLineWidth(line_width)
     bgl.glEnable(bgl.GL_BLEND)
@@ -402,9 +423,16 @@ point_color = {
 
 
 def draw_callback_3d(self, context):
+    """
+        Draw all 3D ui for QuickSnap: Snap axis, edge/points highlight.
+    """
     draw_snap_axis(self, context)
-    coords = [self.snapdata_target.world_space[objectid] for objectid in self.snapdata_target.origins_map]
-    if self.snap_to_origins:
+    if self.current_state == State.IDLE and not (self.object_mode and self.no_selection):
+        coords = [self.snapdata_source.world_space[objectid] for objectid in self.snapdata_source.origins_map]
+    else:
+        coords = [self.snapdata_target.world_space[objectid] for objectid in self.snapdata_target.origins_map]
+    if (self.current_state == State.IDLE and self.snapdata_source.snap_type == 'ORIGINS')\
+            or (self.current_state == State.SOURCE_PICKED and self.snapdata_target.snap_type == 'ORIGINS'):
         draw_points_3d(coords, point_width=5)
     elif self.settings.snap_objects_origin == 'ALWAYS':
         draw_points_3d(coords, color=(1, 1, 0, 0.5), point_width=3, depth_test=True)
@@ -471,7 +499,7 @@ def draw_callback_3d(self, context):
                                     object_indices == self.snapdata_target.scene_meshes.index(self.hover_object)]
                         else:
                             self.target_allowed_indices[self.hover_object] = None
-                    draw_face_center(context,
+                    draw_face_center(self, context,
                                      target_object=self.hover_object,
                                      face_index=self.target_face_index,
                                      allowed_indices=self.target_allowed_indices[self.hover_object],
@@ -513,10 +541,12 @@ def draw_callback_3d(self, context):
 
 
 def add_camera_offset(co, camera_position, camera_vector, is_ortho):
+    """
+    Offset a point towards the camera position to avoid z-fighting.
+    """
     cam_point_vector = camera_position - co
     if is_ortho:
-        # return co
-        return co - camera_vector * np.sqrt(cam_point_vector.dot(cam_point_vector)) * 0.005
+        return co - camera_vector * np.sqrt(cam_point_vector.dot(cam_point_vector)) * 0.01
     else:
         return co + cam_point_vector * 0.01
 
@@ -532,6 +562,9 @@ def draw_edge_highlight(context,
                         color=(1, 1, 0),
                         opacity=1
                         ):
+    """
+        Store necessary information and draw edge highlight of tht target point/edge/face.
+    """
     if target_id >= 0:
         if len(snapdata.indices) <= target_id:
             return
@@ -673,6 +706,9 @@ def draw_face_center(self, context,
                      snap_type,
                      ignore_modifiers,
                      color):
+    """
+        Store necessary information and draw points of the target point/edge/face.
+    """
     if face_index < 0 or target_object == '':
         return
     obj = bpy.data.objects[target_object]
