@@ -346,14 +346,16 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             # If there is no target, get the target on the place perpendicular to the camera,
             # or closest to constrained axis.
             else:
+                is_ortho = context.space_data.region_3d.view_perspective == 'ORTHO'
                 # The 3D location in this direction
                 if len(self.snapping) == 0 or not self.snapping_local:
                     self.target = quicksnap_utils.get_target_free(origin, self.mouse_position_world, self.mouse_vector,
-                                                                  self.snapping)
+                                                                  self.snapping, is_ortho=is_ortho)
                 else:
                     self.target = quicksnap_utils.get_target_free(origin, self.mouse_position_world, self.mouse_vector,
                                                                   self.snapping,
-                                                                  bpy.data.objects[self.selection_objects[0]])
+                                                                  bpy.data.objects[self.selection_objects[0]],
+                                                                  is_ortho=is_ortho)
 
             self.last_translation = (Vector(self.target) - Vector(origin))
             tool_settings = context.tool_settings

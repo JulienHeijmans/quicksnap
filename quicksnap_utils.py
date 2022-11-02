@@ -175,7 +175,7 @@ def get_axis_target(origin, target, axis_constraint, obj=None):
         return new_target
 
 
-def get_target_free(origin, camera_position, camera_vector, snapping, obj=None):
+def get_target_free(origin, camera_position, camera_vector, snapping, obj=None, is_ortho=False):
     """
     Get the target position if there is no target point, taking constraint into consideration.
     If obj is not None the constraint will be calculated in object space.
@@ -194,27 +194,43 @@ def get_target_free(origin, camera_position, camera_vector, snapping, obj=None):
     # Axis constraint
     if len(snapping) == 1:
         if snapping == 'X':
-            point2 = origin + world_matrix @ Vector((1, 0, 0))
+            offset_vector = Vector((1, 0, 0))
         elif snapping == 'Y':
-            point2 = origin + world_matrix @ Vector((0, 1, 0))
+            offset_vector = Vector((0, 1, 0))
         else:
-            point2 = origin + world_matrix @ Vector((0, 0, 1))
-        return mathutils.geometry.intersect_line_line(camera_position, camera_point_b, origin, point2)[1]
+            offset_vector = Vector((0, 0, 1))
+
+        if abs(camera_vector.normalized().dot(offset_vector)) == 1:
+            return origin
+
+        point2 = origin + world_matrix @ offset_vector
+        result = mathutils.geometry.intersect_line_line(camera_position, camera_point_b, origin, point2)
+        if result is None:
+            return origin
+        return result[1]
 
     # Planar constraint
     if len(snapping) == 2:
         if snapping == 'XY':
+            axis_vector = Vector((0, 0, 1))
             point2 = origin + world_matrix @ Vector((1000, 0, 0))
             point3 = origin + world_matrix @ Vector((0, 1000, 0))
         elif snapping == 'YZ':
+            axis_vector = Vector((1, 0, 0))
             point2 = origin + world_matrix @ Vector((0, 1000, 0))
             point3 = origin + world_matrix @ Vector((0, 0, 1000))
         else:
+            axis_vector = Vector((0, 1, 0))
             point2 = origin + world_matrix @ Vector((1000, 0, 0))
             point3 = origin + world_matrix @ Vector((0, 0, 1000))
 
+        if is_ortho and camera_vector.normalized().dot(axis_vector) != 1:
+            return origin
+
         normal = mathutils.geometry.normal(origin, point2, point3)
         new_target = mathutils.geometry.intersect_line_plane(camera_position, camera_point_b, origin, normal, False)
+        if new_target is None:
+            return origin
         return new_target
 
 
