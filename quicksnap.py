@@ -223,9 +223,14 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         """
 
         # Update 3DView camera information
-        region3d = context.space_data.region_3d
+        region3d = context.region_data
         self.camera_position = region3d.view_matrix.inverted().translation
-        self.mouse_position_world = view3d_utils.region_2d_to_origin_3d(region, region.data, self.mouse_position)
+        if region3d.view_perspective == 'CAMERA' and not region3d.is_perspective:
+            depth_location = context.space_data.camera.location
+            self.mouse_position_world = view3d_utils.region_2d_to_location_3d(region, region.data, self.mouse_position,
+                                                                              depth_location)
+        else:
+            self.mouse_position_world = view3d_utils.region_2d_to_origin_3d(region, region.data, self.mouse_position)
         self.mouse_vector = view3d_utils.region_2d_to_vector_3d(region, region.data,
                                                                 self.mouse_position)
 
@@ -373,6 +378,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         self.icons = None
         self.icon_display_time = 0
         self.view_distance = None
+        self.view_camera_zoom = None
         self.no_selection = False
         self.no_selection_target = None
         self.mouse_position_world = None
@@ -444,11 +450,13 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         region3d = context.space_data.region_3d
         if self.camera_position == region3d.view_matrix.inverted().translation \
                 and self.perspective_matrix == region3d.perspective_matrix \
-                and self.view_distance == region3d.view_distance:
+                and self.view_distance == region3d.view_distance \
+                and self.view_camera_zoom == region3d.view_camera_zoom:
             return
         logger.info("refresh data")
         self.camera_position = region3d.view_matrix.inverted().translation
         self.view_distance = region3d.view_distance
+        self.view_camera_zoom = region3d.view_camera_zoom
         self.perspective_matrix = context.space_data.region_3d.perspective_matrix
         self.perspective_matrix_inverse = self.perspective_matrix.inverted()
         self.init_snap_data(context, region, self.current_state == State.IDLE, True)
@@ -552,12 +560,13 @@ class QuickVertexSnapOperator(bpy.types.Operator):
         if event.is_repeat or event.value != 'PRESS':
             return
         event_type = event.type
+        logger.debug(f"Input key: {event_type}")
         if not self.menu_open and event_type == self.hotkey_type and event.shift == self.hotkey_shift \
                 and event.ctrl == self.hotkey_ctrl and event.alt == self.hotkey_alt and self.current_state == State.IDLE:
             self.menu_open = True
             logger.info(f"Pie menu called.")
             bpy.ops.wm.call_menu_pie(name="VIEW3D_MT_PIE_quicksnap")
-        elif event_type == 'ONE':
+        elif event_type == 'ONE' or event_type == 'NUMPAD_1':
             self.icon_display_time = time.time()
             if self.current_state == State.IDLE:
                 if self.settings.snap_source_type != 'POINTS':
@@ -567,7 +576,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 if self.settings.snap_target_type != 'POINTS':
                     self.settings.snap_target_type = 'POINTS'
                     self.handle_pie_menu_closed(context, event, region)
-        elif event_type == 'TWO':
+        elif event_type == 'TWO' or event_type == 'NUMPAD_2':
             self.icon_display_time = time.time()
             if self.current_state == State.IDLE:
                 if self.settings.snap_source_type != 'MIDPOINTS':
@@ -577,7 +586,7 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 if self.settings.snap_target_type != 'MIDPOINTS':
                     self.settings.snap_target_type = 'MIDPOINTS'
                     self.handle_pie_menu_closed(context, event, region)
-        elif event_type == 'THREE':
+        elif event_type == 'THREE' or event_type == 'NUMPAD_3':
             self.icon_display_time = time.time()
             if self.current_state == State.IDLE:
                 if self.settings.snap_source_type != 'FACES':

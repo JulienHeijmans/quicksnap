@@ -318,6 +318,9 @@ class SnapData:
         """
         if object_name in self.processed:  # Skip already processed objects.
             return
+        if not (bpy.data.objects[object_name].type == 'MESH' or bpy.data.objects[object_name].type == 'CURVE'):
+            self.processed.add(object_name)
+            return
         if is_selected:  # Process selected objects first.
             # Prioritize object if is in the list but not first in list.
             if object_name in self.to_process_selected:
@@ -389,11 +392,17 @@ class SnapData:
         scene_meshes is None when processing the origin snapdata.
         """
 
+        current_camera = ""
+        if context.region_data.view_perspective == 'CAMERA':
+            current_camera = context.space_data.camera.name
+
         # Source SnapData: Add origin only when we are in object mode.
         # print(f"add_scene_roots - self.is_origin_snapdata ={self.is_origin_snapdata } - self.no_selection={self.no_selection} - self.object_mode={self.object_mode}")
         if self.is_origin_snapdata and not (self.no_selection and self.object_mode):
             if self.object_mode or self.no_selection:
                 for object_name in selected_meshes:
+                    if object_name == current_camera:
+                        continue
                     self.add_object_root(context, object_name)
 
         # Target SnapData: Add selection origins only when we are not in object mode.
@@ -410,6 +419,8 @@ class SnapData:
                              not quicksnap_utils.has_parent(bpy.data.objects[object_name], selected_objs)]
             # logger.debug(f"add_scene_roots: {len(add_roots)}")
             for object_name in add_roots:
+                if object_name == current_camera:
+                    continue
                 self.add_object_root(context, object_name)
 
         if not self.is_origin_snapdata:

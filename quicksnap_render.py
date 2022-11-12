@@ -644,7 +644,7 @@ def draw_edge_highlight(context,
                 region3d = context.space_data.region_3d
                 camera_position = region3d.view_matrix.inverted().translation
                 camera_vector = region3d.view_rotation @ Vector((0.0, 0.0, -1.0))
-                is_ortho = region3d.view_perspective == 'ORTHO'
+                is_ortho = not region3d.is_perspective
 
                 vert_local_index = {}
                 verts_co = {}
@@ -723,7 +723,7 @@ def draw_face_center(self, context,
     region3d = context.space_data.region_3d
     camera_position = region3d.view_matrix.inverted().translation
     camera_vector = region3d.view_rotation @ Vector((0.0, 0.0, -1.0))
-    is_ortho = region3d.view_perspective == 'ORTHO'
+    is_ortho = not region3d.is_perspective
     if snap_type == 'FACES':
         # and face_index in allowed_indices
         # print(f"face index:{face_index}")
