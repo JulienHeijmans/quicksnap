@@ -393,7 +393,13 @@ def check_close_objects(context, region, depsgraph, mouse_position):
     hit_objects = []
     # logger.info(f"check_close_objects: {points}")
     for point in points:
-        view_position = view3d_utils.region_2d_to_origin_3d(region, context.space_data.region_3d, point)
+        if region.data.view_perspective == 'CAMERA' and not region.data.is_perspective:
+            depth_location = context.space_data.camera.location
+            view_position = view3d_utils.region_2d_to_location_3d(region, region.data, point,
+                                                                  depth_location)
+        else:
+            view_position = view3d_utils.region_2d_to_origin_3d(region, region.data, point)
+        # view_position = view3d_utils.region_2d_to_origin_3d(region, context.space_data.region_3d, point)
         mouse_vector = view3d_utils.region_2d_to_vector_3d(region, context.space_data.region_3d, point)
         (hit, _, _, _, obj, *_) = context.scene.ray_cast(depsgraph, origin=view_position,
                                                          direction=mouse_vector)

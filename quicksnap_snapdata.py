@@ -452,8 +452,21 @@ class SnapData:
         ws = world_space_matrix @ vertex_co
         ws_2 = Vector((ws[0], ws[1], ws[2], 1))
         view_space_projection = self.perspective_matrix @ ws_2
+
         if view_space_projection.w <= 0:  # Skip behind camera
             return False
+
+        region3d = context.space_data.region_3d
+        if region3d.view_perspective == 'CAMERA' and not region3d.is_perspective:
+            rotation = view3d_utils.region_2d_to_vector_3d(context.region, region3d, (0, 0)).normalized()
+            view_location = context.space_data.camera.location
+            cam_to_point_vector = (ws - view_location).normalized()
+            dot = cam_to_point_vector.dot(rotation)
+            if dot < 0: #behing camera in ortho camera
+                print(f"dot: {dot} - behind camera")
+                return False
+
+
         coord_2d = quicksnap_utils.transform_viewspace_coord2d(view_space_projection, self.width_half, self.height_half)
 
         # Skip out of view
@@ -743,7 +756,13 @@ class SnapData:
                 continue
             self.add_object_data(obj.name, depsgraph=depsgraph, set_first_priority=True)
 
-        view_position = view3d_utils.region_2d_to_origin_3d(region, context.space_data.region_3d, mouse_position)
+        if region.data.view_perspective == 'CAMERA' and not region.data.is_perspective:
+            depth_location = context.space_data.camera.location
+            view_position = view3d_utils.region_2d_to_location_3d(region, region.data, mouse_position,
+                                                                  depth_location)
+        else:
+            view_position = view3d_utils.region_2d_to_origin_3d(region, region.data, mouse_position)
+        # view_position = view3d_utils.region_2d_to_origin_3d(region, context.space_data.region_3d, mouse_position)
         mouse_vector = view3d_utils.region_2d_to_vector_3d(region, context.space_data.region_3d, mouse_position)
         # Look for object under the mouse, if found, bring it in top of the list of objects to process.
         (direct_hit, _, _, target_face_index, direct_hit_object, _) = context.scene.ray_cast(depsgraph,
