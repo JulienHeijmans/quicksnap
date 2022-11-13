@@ -713,6 +713,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
 
         # Revert mode and selection
         if self.object_mode:
+            if context.active_object is None:
+                context.view_layer.objects.active = context.selected_objects[0]
             bpy.ops.object.mode_set(mode='OBJECT')
 
         if self.no_selection:
