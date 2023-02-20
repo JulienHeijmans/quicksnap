@@ -1175,6 +1175,8 @@ class SingletonUpdater:
                     tmp = ''
             else:
                 tmp += char
+            if len(segments) >= 3:
+                break
         if len(tmp) > 0:
             segments.append(int(tmp))
 
