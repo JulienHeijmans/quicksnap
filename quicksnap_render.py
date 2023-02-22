@@ -23,7 +23,8 @@ shader_2d_image = gpu.shader.from_builtin('2D_IMAGE')
 shader_2d_uniform_color = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
 shader_3d_uniform_color = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
 shader_3d_smooth_color = gpu.shader.from_builtin('3D_SMOOTH_COLOR')
-shader_3d_polyline_smooth_color = gpu.shader.from_builtin('POLYLINE_SMOOTH_COLOR')
+if bpy.app.version >= (3, 4, 0):
+    shader_3d_polyline_smooth_color = gpu.shader.from_builtin('POLYLINE_SMOOTH_COLOR')
 
 shader_2d_image_info = gpu.types.GPUShaderCreateInfo()
 #interface
@@ -203,47 +204,82 @@ def draw_line_3d_smooth_blend(source, target, color_a=(1, 0, 0, 1), color_b=(0, 
     """
         Draw a smooth blend line in the viewport.
     """
-    if line_width != 1:
-        gpu.state.line_width_set(line_width)
-    gpu.state.blend_set("ALPHA")
-    # gpu.state.enable(gpu.STATE_LINE_SMOOTH)
-    if depth_test:
-        gpu.state.depth_test_set("LESS")
-    vertices = (
-        (source[0], source[1], source[2]),
-        (target[0], target[1], target[2]))
-    color_fade = (color_a, color_b)
+    if bpy.app.version >= (3, 4, 0):
+        if line_width != 1:
+            gpu.state.line_width_set(line_width)
+        gpu.state.blend_set("ALPHA")
+        if depth_test:
+            gpu.state.depth_test_set("LESS")
+        vertices = (
+            (source[0], source[1], source[2]),
+            (target[0], target[1], target[2]))
+        color_fade = (color_a, color_b)
 
-    batch = batch_for_shader(shader_3d_polyline_smooth_color, 'LINES', {"pos": vertices, "color": color_fade})
-    shader_3d_polyline_smooth_color.bind()
-    # shader_3d_smooth_color.uniform_float("lineWidth", line_width)
-    batch.draw(shader_3d_polyline_smooth_color)
-    if line_width != 1:
-        gpu.state.line_width_set(1)
-    gpu.state.blend_set("NONE")
-    # gpu.state.disable(gpu.STATE_LINE_SMOOTH)
-    if depth_test:
-        gpu.state.depth_test_set("NONE")
+        batch = batch_for_shader(shader_3d_polyline_smooth_color, 'LINES', {"pos": vertices, "color": color_fade})
+        shader_3d_polyline_smooth_color.bind()
+        batch.draw(shader_3d_polyline_smooth_color)
+        if line_width != 1:
+            gpu.state.line_width_set(1)
+        gpu.state.blend_set("NONE")
+        if depth_test:
+            gpu.state.depth_test_set("NONE")
+    else:
+        if line_width != 1:
+            bgl.glLineWidth(line_width)
+        bgl.glEnable(bgl.GL_BLEND)
+        bgl.glEnable(bgl.GL_LINE_SMOOTH)
+        if depth_test:
+            bgl.glEnable(bgl.GL_DEPTH_TEST)
+        vertices = (
+            (source[0], source[1], source[2]),
+            (target[0], target[1], target[2]))
+        color_fade = (color_a, color_b)
+
+        batch = batch_for_shader(shader_3d_smooth_color, 'LINES', {"pos": vertices, "color": color_fade})
+        shader_3d_smooth_color.bind()
+        batch.draw(shader_3d_smooth_color)
+        if line_width != 1:
+            bgl.glLineWidth(1)
+        bgl.glDisable(bgl.GL_BLEND)
+        bgl.glDisable(bgl.GL_LINE_SMOOTH)
+        if depth_test:
+            bgl.glDisable(bgl.GL_DEPTH_TEST)
 
 
 def draw_polygon_smooth_blend(points, indices, color, depth_test):
     """
         Draw a smooth blend polygon in the viewport.
     """
-    gpu.state.blend_set("ALPHA")
-    # gpu.state.enable(gpu.STATE_LINE_SMOOTH)
-    if depth_test:
-        gpu.state.depth_test_set("LESS")
-    colors = [color] * len(points)
-    batch = batch_for_shader(shader_3d_smooth_color, 'TRIS', {"pos": points, "color": colors}, indices=indices)
-    shader.uniform_float("color", color)
-    shader_3d_smooth_color.bind()
-    batch.draw(shader_3d_smooth_color)
+    if bpy.app.version >= (3, 4, 0):
+        gpu.state.blend_set("ALPHA")
+        # gpu.state.enable(gpu.STATE_LINE_SMOOTH)
+        if depth_test:
+            gpu.state.depth_test_set("LESS")
+        colors = [color] * len(points)
+        batch = batch_for_shader(shader_3d_smooth_color, 'TRIS', {"pos": points, "color": colors}, indices=indices)
+        shader.uniform_float("color", color)
+        shader_3d_smooth_color.bind()
+        batch.draw(shader_3d_smooth_color)
 
-    gpu.state.blend_set("NONE")
-    # gpu.state.disable(gpu.STATE_LINE_SMOOTH)
-    if depth_test:
-        gpu.state.depth_test_set("NONE")
+        gpu.state.blend_set("NONE")
+        # gpu.state.disable(gpu.STATE_LINE_SMOOTH)
+        if depth_test:
+            gpu.state.depth_test_set("NONE")
+    else:
+        bgl.glEnable(bgl.GL_BLEND)
+        bgl.glEnable(bgl.GL_LINE_SMOOTH)
+        if depth_test:
+            bgl.glEnable(bgl.GL_DEPTH_TEST)
+        colors = [color] * len(points)
+        batch = batch_for_shader(shader_3d_smooth_color, 'TRIS', {"pos": points, "color": colors}, indices=indices)
+        shader.uniform_float("color", color)
+        shader_3d_smooth_color.bind()
+        batch.draw(shader_3d_smooth_color)
+
+        bgl.glDisable(bgl.GL_BLEND)
+        bgl.glDisable(bgl.GL_LINE_SMOOTH)
+        if depth_test:
+            bgl.glDisable(bgl.GL_DEPTH_TEST)
 
 
 def draw_points_3d(coords, color=(1, 1, 0, 1), point_width=3, depth_test=False):
