@@ -266,12 +266,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                 if self.object_mode and self.no_selection and self.no_selection_target is None or \
                         self.no_selection_target != target_name:
                     self.no_selection_target = target_name
-                if self.distance <= 15:
-                    self.closest_actionable = True  # Points too far from the mouse are highlighted but can't be moved
-                    bpy.context.window.cursor_set("SCROLL_XY")
-                else:
-                    self.closest_actionable = False
-                    bpy.context.window.cursor_set("CROSSHAIR")
+                self.closest_actionable = True  # Points too far from the mouse are highlighted but can't be moved
+                bpy.context.window.cursor_set("SCROLL_XY")
             else:
                 if self.object_mode and self.no_selection and self.no_selection_target is not None:
                     self.no_selection_target = None
