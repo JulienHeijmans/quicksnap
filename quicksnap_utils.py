@@ -31,7 +31,7 @@ def transform_worldspace_coord2d(world_space_coord, region, region3d):
 
 def get_selection_objects(context):
     if 'EDIT' in context.mode:
-        return [context.edit_object]
+        return [obj for obj in context.selected_objects if obj.visible_get()]
     else:
         return [obj for obj in context.selected_objects if obj.visible_get()]
 
