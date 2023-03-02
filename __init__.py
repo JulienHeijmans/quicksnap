@@ -6,7 +6,7 @@ from . import addon_updater_ops
 bl_info = {
     "name": "QuickSnap",
     "author": "Julien Heijmans",
-    "blender": (2, 80, 0),
+    "blender": (2, 93, 0),
     'version': (1, 4, 4),
     "category": "3D View",
     "description": "Quickly snap objects/vertices/curve points",
