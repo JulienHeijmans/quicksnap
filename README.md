@@ -118,3 +118,8 @@ I am saying this but the tool should be efficient enough in most cases.
 ## Known issues / limitation:
 * Target highlighting does not work with 'Ignore modifiers' enabled. I plan to investigate new ways to ignore modifiers that might allow highlighting in that situation.
 * In edit mode, the tool will always use the original points of the mesh (Without modifiers)
+
+## Version support:
+* QuickSnap Latest Version: Blender 3.2 and newer.
+* If you are using a Blender version 2.93 to 3.1, use the older release: [QuickSnap 1.4.1](https://github.com/JulienHeijmans/quicksnap/releases/tag/1_4_1)
+* Blender version older than 2.93: Not supported.
