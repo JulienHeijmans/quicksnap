@@ -120,4 +120,4 @@ I am saying this but the tool should be efficient enough in most cases.
 * In edit mode, the tool will always use the original points of the mesh (Without modifiers)
 
 ## Version support:
-* QuickSnap Latest Version: Blender 2.93 and newer.
+* Blender 2.93 and newer.
