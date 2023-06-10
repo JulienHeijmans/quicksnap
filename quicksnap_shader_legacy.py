@@ -30,3 +30,7 @@ shader_2d_image_fragment = '''
     }
 '''
 shader_2d_image_color = gpu.types.GPUShader(shader_2d_image_vertex, shader_2d_image_fragment)
+shader_2d_uniform_color = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
+shader_3d_uniform_color = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
+shader_3d_smooth_color = gpu.shader.from_builtin('3D_SMOOTH_COLOR')
+shader_3d_polyline_smooth_color = None

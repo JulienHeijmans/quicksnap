@@ -14,22 +14,13 @@ from mathutils import Vector
 from .quicksnap_utils import State
 from .quicksnap_utils import dump
 if bpy.app.version >= (3, 4, 0):
-    from .quicksnap_shader_gpu_module import shader_2d_image_color
+    from .quicksnap_shader_gpu_module import shader_2d_image_color, shader_2d_uniform_color, shader_3d_uniform_color, shader_3d_smooth_color, shader_3d_polyline_smooth_color
 else:
-    from .quicksnap_shader_legacy import shader_2d_image_color
+    from .quicksnap_shader_legacy import shader_2d_image_color, shader_2d_uniform_color, shader_3d_uniform_color, shader_3d_smooth_color, shader_3d_polyline_smooth_color
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
 logger = logging.getLogger(__name_addon__)
 square_indices = ((0, 1), (1, 2), (2, 3), (3, 0))
-if bpy.app.version >= (3, 4, 0):
-    shader_3d_polyline_smooth_color = gpu.shader.from_builtin('POLYLINE_SMOOTH_COLOR')
-    shader_2d_uniform_color = gpu.shader.from_builtin('UNIFORM_COLOR')
-    shader_3d_uniform_color = gpu.shader.from_builtin('UNIFORM_COLOR')
-    shader_3d_smooth_color = gpu.shader.from_builtin('SMOOTH_COLOR')
-else:  # Builtin shaders were renamed past 3.4.0, and old names were completely stripped in 4.0a.
-    shader_2d_uniform_color = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
-    shader_3d_uniform_color = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
-    shader_3d_smooth_color = gpu.shader.from_builtin('3D_SMOOTH_COLOR')
 icons = {}
 
 
