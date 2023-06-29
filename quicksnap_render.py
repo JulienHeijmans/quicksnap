@@ -14,22 +14,13 @@ from mathutils import Vector
 from .quicksnap_utils import State
 from .quicksnap_utils import dump
 if bpy.app.version >= (3, 4, 0):
-    from .quicksnap_shader_gpu_module import shader_2d_image_color
+    from .quicksnap_shader_gpu_module import shader_2d_image_color, shader_2d_uniform_color, shader_3d_uniform_color, shader_3d_smooth_color, shader_3d_polyline_smooth_color
 else:
-    from .quicksnap_shader_legacy import shader_2d_image_color
+    from .quicksnap_shader_legacy import shader_2d_image_color, shader_2d_uniform_color, shader_3d_uniform_color, shader_3d_smooth_color, shader_3d_polyline_smooth_color
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
 logger = logging.getLogger(__name_addon__)
-
-shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
 square_indices = ((0, 1), (1, 2), (2, 3), (3, 0))
-shader_2d_image = gpu.shader.from_builtin('2D_IMAGE')
-shader_2d_uniform_color = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
-shader_3d_uniform_color = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
-shader_3d_smooth_color = gpu.shader.from_builtin('3D_SMOOTH_COLOR')
-if bpy.app.version >= (3, 4, 0):
-    shader_3d_polyline_smooth_color = gpu.shader.from_builtin('POLYLINE_SMOOTH_COLOR')
-
 icons = {}
 
 
@@ -50,15 +41,15 @@ def draw_square_2d(position_x, position_y, size, color=(1, 1, 0, 1), line_width=
             (position_x - size, position_y + size))
 
         batch = batch_for_shader(shader_2d_uniform_color, 'LINES', {"pos": vertices}, indices=square_indices)
-        shader.bind()
-        shader.uniform_float("color", color)
-        batch.draw(shader)
+        shader_2d_uniform_color.bind()
+        shader_2d_uniform_color.uniform_float("color", color)
+        batch.draw(shader_2d_uniform_color)
     if point_width > 0:
         gpu.state.point_size_set(point_width)
         batch = batch_for_shader(shader_2d_uniform_color, 'POINTS', {"pos": [(position_x, position_y)]})
-        shader.bind()
-        shader.uniform_float("color", color)
-        batch.draw(shader)
+        shader_2d_uniform_color.bind()
+        shader_2d_uniform_color.uniform_float("color", color)
+        batch.draw(shader_2d_uniform_color)
         gpu.state.point_size_set(5)
 
     if line_width != 1:
@@ -104,11 +95,6 @@ def draw_image(self, position_x=100, position_y=100, size=20, image='MISSING', c
     shader_2d_image_color.uniform_sampler("Image", icons[image])
     batch.draw(shader_2d_image_color)
 
-    # if image and self.icons[image].gl_load():
-    #     raise Exception()
-
-    # bpy.data.images.remove(img)
-    # img.reload()
     gpu.state.blend_set(previous_blend_state)
 
 
@@ -119,20 +105,18 @@ def draw_line_2d(source_x, source_y, target_x, target_y, color=(1, 1, 0, 1), lin
     if line_width != 1:
         gpu.state.line_width_set(line_width)
     gpu.state.blend_set("ALPHA")
-    # gpu.state.enable(gpu.STATE_LINE_SMOOTH)
     vertices = (
         (source_x, source_y),
         (target_x, target_y))
 
     batch = batch_for_shader(shader_2d_uniform_color, 'LINES', {"pos": vertices})
-    shader.bind()
-    shader.uniform_float("color", color)
-    batch.draw(shader)
+    shader_2d_uniform_color.bind()
+    shader_2d_uniform_color.uniform_float("color", color)
+    batch.draw(shader_2d_uniform_color)
 
     if line_width != 1:
         gpu.state.line_width_set(1)
     gpu.state.blend_set("NONE")
-    # gpu.state.disable(gpu.STATE_LINE_SMOOTH)
 
 
 def draw_line_3d(source, target, color=(1, 1, 0, 1), line_width=1, depth_test=False):
@@ -213,17 +197,14 @@ def draw_polygon_smooth_blend(points, indices, color, depth_test):
     """
     if bpy.app.version >= (3, 4, 0):
         gpu.state.blend_set("ALPHA")
-        # gpu.state.enable(gpu.STATE_LINE_SMOOTH)
         if depth_test:
             gpu.state.depth_test_set("LESS")
         colors = [color] * len(points)
         batch = batch_for_shader(shader_3d_smooth_color, 'TRIS', {"pos": points, "color": colors}, indices=indices)
-        shader.uniform_float("color", color)
         shader_3d_smooth_color.bind()
         batch.draw(shader_3d_smooth_color)
 
         gpu.state.blend_set("NONE")
-        # gpu.state.disable(gpu.STATE_LINE_SMOOTH)
         if depth_test:
             gpu.state.depth_test_set("NONE")
     else:
@@ -233,7 +214,6 @@ def draw_polygon_smooth_blend(points, indices, color, depth_test):
             bgl.glEnable(bgl.GL_DEPTH_TEST)
         colors = [color] * len(points)
         batch = batch_for_shader(shader_3d_smooth_color, 'TRIS', {"pos": points, "color": colors}, indices=indices)
-        shader.uniform_float("color", color)
         shader_3d_smooth_color.bind()
         batch.draw(shader_3d_smooth_color)
 
@@ -253,9 +233,9 @@ def draw_points_3d(coords, color=(1, 1, 0, 1), point_width=3, depth_test=False):
 
     gpu.state.point_size_set(point_width)
     batch = batch_for_shader(shader_3d_uniform_color, 'POINTS', {"pos": coords})
-    shader.bind()
-    shader.uniform_float("color", color)
-    batch.draw(shader)
+    shader_3d_uniform_color.bind()
+    shader_3d_uniform_color.uniform_float("color", color)
+    batch.draw(shader_3d_uniform_color)
     gpu.state.point_size_set(5)
 
     gpu.state.blend_set("NONE")

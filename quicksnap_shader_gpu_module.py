@@ -48,3 +48,7 @@ shader_2d_image_info.fragment_source(
 shader_2d_image_color = gpu.shader.create_from_info(shader_2d_image_info)
 del shader_2d_image_info
 del shader_2d_image_interface
+shader_3d_polyline_smooth_color = gpu.shader.from_builtin('POLYLINE_SMOOTH_COLOR')
+shader_2d_uniform_color = gpu.shader.from_builtin('UNIFORM_COLOR')
+shader_3d_uniform_color = gpu.shader.from_builtin('UNIFORM_COLOR')
+shader_3d_smooth_color = gpu.shader.from_builtin('SMOOTH_COLOR')
