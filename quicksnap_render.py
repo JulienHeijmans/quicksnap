@@ -161,6 +161,7 @@ def draw_line_3d_smooth_blend(source, target, color_a=(1, 0, 0, 1), color_b=(0, 
         color_fade = (color_a, color_b)
 
         batch = batch_for_shader(shader_3d_polyline_smooth_color, 'LINES', {"pos": vertices, "color": color_fade})
+        shader_3d_polyline_smooth_color.uniform_float("lineWidth", line_width)
         shader_3d_polyline_smooth_color.bind()
         batch.draw(shader_3d_polyline_smooth_color)
         if line_width != 1:
@@ -566,7 +567,7 @@ def draw_edge_highlight(context,
                 if target_object not in npdata:
                     npdata[target_object] = {}
                 if "edge_verts" not in npdata[target_object]:
-                    arr = np.zeros(len(data.edges) * 2, dtype=np.int)
+                    arr = np.zeros(len(data.edges) * 2, dtype=int)
                     data.edges.foreach_get('vertices', arr)
                     arr.shape = (len(data.edges), 2)
                     npdata[target_object]["edge_verts"] = arr
@@ -602,10 +603,10 @@ def draw_edge_highlight(context,
                     npdata[target_object] = {}
                 if "polygon_loop_tri_idx" not in npdata[target_object]:
                     data.calc_loop_triangles()
-                    arr = np.zeros(len(data.loop_triangles), dtype=np.int)
+                    arr = np.zeros(len(data.loop_triangles), dtype=int)
                     data.loop_triangles.foreach_get('polygon_index', arr)
                     npdata[target_object]["polygon_loop_tri_idx"] = arr
-                    arr2 = np.zeros(len(data.loop_triangles) * 3, dtype=np.int)
+                    arr2 = np.zeros(len(data.loop_triangles) * 3, dtype=int)
                     data.loop_triangles.foreach_get('vertices', arr2)
                     arr2.shape = (len(data.loop_triangles), 3)
                     npdata[target_object]["polygon_loop_verts"] = arr2
