@@ -77,7 +77,7 @@ class ObjectPointData:
                 edges = obj.data.edges
                 edge_count = len(edges)
                 edges_vertid_shape = (edge_count, 2)
-                edges_vertid = np.zeros((edge_count * 2), dtype=np.int)  # [0.0, 0.0] * len(mesh.edges)
+                edges_vertid = np.zeros((edge_count * 2), dtype=int)  # [0.0, 0.0] * len(mesh.edges)
                 edges.foreach_get('vertices', edges_vertid)
                 edges_vertid.shape = edges_vertid_shape
                 # Get edges center points
@@ -119,9 +119,9 @@ class ObjectPointData:
                     polygons.foreach_get('loop_total', polygon_vert_count)
 
                     polygon_vert_start_index = np.concatenate(
-                        [np.zeros(1, dtype=np.int), np.cumsum(polygon_vert_count[1:])])
+                        [np.zeros(1, dtype=int), np.cumsum(polygon_vert_count[1:])])
 
-                    polygon_verts = np.empty(np.sum(polygon_vert_count), dtype=np.int)
+                    polygon_verts = np.empty(np.sum(polygon_vert_count), dtype=int)
                     polygons.foreach_get('vertices', polygon_verts)
                     selected_polygon_verts = verts_selected[polygon_verts]
 
