@@ -864,7 +864,8 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
     display_target_wireframe: bpy.props.BoolProperty(name="Display target object wireframe", default=True)
     highlight_target_vertex_edges: bpy.props.BoolProperty(name="Enable highlighting of target vertex edges*",
                                                           default=True)
-    edge_highlight_width: bpy.props.IntProperty(name="Highlight Width", default=2, min=1, max=5)
+    edge_highlight_width: bpy.props.IntProperty(name="Highlight Width", default=2, min=1, max=10)
+    selection_square_size: bpy.props.IntProperty(name="Selection Square Size", default=7, min=5, max=15)
     edge_highlight_color_source: bpy.props.FloatVectorProperty(
         name="Highlight Color (Selected object)",
         subtype='COLOR',
@@ -960,10 +961,12 @@ class QuickVertexSnapPreference(bpy.types.AddonPreferences):
         col.prop(self, "draw_rubberband")
         col.prop(self, "display_target_wireframe")
         col.prop(self, "display_potential_target_points")
+        col.prop(self, "selection_square_size")
+        col.separator()
         col.prop(self, "snap_target_type_icon")
         col.separator()
         container = col.box().column()
-        container.label(text="Target Edge Highlight*:")
+        container.label(text="Selection/Target Highlight*:")
         container.prop(self, "highlight_target_vertex_edges")
         if self.highlight_target_vertex_edges:
             container.prop(self, "edge_highlight_width")

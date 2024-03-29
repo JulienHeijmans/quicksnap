@@ -12,7 +12,6 @@ from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 
 from .quicksnap_utils import State
-from .quicksnap_utils import remap
 from .quicksnap_utils import dump
 if bpy.app.version >= (3, 4, 0):
     from .quicksnap_shader_gpu_module import shader_2d_image_color, shader_2d_uniform_color, shader_3d_uniform_color, shader_3d_smooth_color, shader_3d_polyline_smooth_color
@@ -257,8 +256,7 @@ def draw_callback_2d(self, context):
     """
         Draw all QuickSnap 2D UI: Icons, source/target square. rubberband/
     """
-    square_width=7*remap(1,5,1,2,self.settings.edge_highlight_width)
-    print(f"square wiidth:{square_width}")
+    square_width=self.settings.selection_square_size
     current_time = time.time()
     if self.settings.snap_target_type_icon != 'NEVER' and current_time < self.icon_display_time + icon_display_duration or self.settings.snap_target_type_icon == 'ALWAYS':
         fade = 1
