@@ -424,3 +424,6 @@ def set_select_all_points(object_names, selected=False):
                 spline.points.foreach_set('select', np.full(len(spline.points), selected))
                 spline.bezier_points.foreach_set('select_control_point', np.full(len(spline.bezier_points), selected))
             pass
+
+
+

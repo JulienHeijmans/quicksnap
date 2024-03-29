@@ -150,8 +150,6 @@ def draw_line_3d_smooth_blend(source, target, color_a=(1, 0, 0, 1), color_b=(0, 
         Draw a smooth blend line in the viewport.
     """
     if bpy.app.version >= (3, 4, 0):
-        if line_width != 1:
-            gpu.state.line_width_set(line_width)
         gpu.state.blend_set("ALPHA")
         if depth_test:
             gpu.state.depth_test_set("LESS")
@@ -164,8 +162,7 @@ def draw_line_3d_smooth_blend(source, target, color_a=(1, 0, 0, 1), color_b=(0, 
         shader_3d_polyline_smooth_color.uniform_float("lineWidth", line_width)
         shader_3d_polyline_smooth_color.bind()
         batch.draw(shader_3d_polyline_smooth_color)
-        if line_width != 1:
-            gpu.state.line_width_set(1)
+
         gpu.state.blend_set("NONE")
         if depth_test:
             gpu.state.depth_test_set("NONE")
@@ -254,10 +251,12 @@ icon_display_duration = 2
 fade_duration = 0.2
 
 
+
 def draw_callback_2d(self, context):
     """
         Draw all QuickSnap 2D UI: Icons, source/target square. rubberband/
     """
+    square_width=self.settings.selection_square_size
     current_time = time.time()
     if self.settings.snap_target_type_icon != 'NEVER' and current_time < self.icon_display_time + icon_display_duration or self.settings.snap_target_type_icon == 'ALWAYS':
         fade = 1
@@ -273,6 +272,7 @@ def draw_callback_2d(self, context):
                        image=self.snapdata_target.snap_type, color=icon_color[self.current_state], fade=fade)
 
     if self.closest_source_id >= 0:
+        
         source_position_3d = self.snapdata_source.world_space[self.closest_source_id]
         source_position_2d = bpy_extras.view3d_utils.location_3d_to_region_2d(context.region,
                                                                               context.space_data.region_3d,
@@ -280,7 +280,7 @@ def draw_callback_2d(self, context):
         source_x, source_y = source_position_2d[0], source_position_2d[1]
         # Source selection
         if self.current_state == State.IDLE:  # no source picked
-            draw_square_2d(source_x, source_y, 7)
+            draw_square_2d(source_x, source_y, square_width)
 
         else:
             # logger.info(f"source picked . self.target2d={self.target2d} -  self.settings.draw_rubberband={self.settings.draw_rubberband}")
@@ -289,7 +289,7 @@ def draw_callback_2d(self, context):
             else:
                 color = (1, 1, 0, 1)
             if self.settings.draw_rubberband:
-                draw_square_2d(source_x, source_y, 7, color=color)
+                draw_square_2d(source_x, source_y, square_width, color=color)
             # if self.target2d:
             if self.target is not None:
                 target_position_2d = bpy_extras.view3d_utils.location_3d_to_region_2d(context.region,
@@ -303,13 +303,13 @@ def draw_callback_2d(self, context):
                         context.space_data.region_3d,
                         self.snapdata_target.world_space[self.closest_target_id])
                     if len(self.snapping) > 0:
-                        draw_square_2d(target_x, target_y, 7,
+                        draw_square_2d(target_x, target_y, square_width,
                                        color=color, line_width=0)  # dot to target
-                        draw_square_2d(snap_target_2d[0], snap_target_2d[1], 7, color=color)  # square to snapped point
+                        draw_square_2d(snap_target_2d[0], snap_target_2d[1], square_width, color=color)  # square to snapped point
                     else:
-                        draw_square_2d(target_x, target_y, 7, color=color)
+                        draw_square_2d(target_x, target_y, square_width, color=color)
                 else:
-                    draw_square_2d(target_x, target_y, 7, color=color,
+                    draw_square_2d(target_x, target_y, square_width, color=color,
                                    line_width=0)  # dot to target
 
                 if self.settings.draw_rubberband:
@@ -317,7 +317,7 @@ def draw_callback_2d(self, context):
 
     elif self.current_state == State.IDLE:
         # Draw grey square when tool is enabled, additional indication that the tool is active
-        draw_square_2d(self.mouse_position[0], self.mouse_position[1], 7, color=(1, 1, 1, 0.3), point_width=0)
+        draw_square_2d(self.mouse_position[0], self.mouse_position[1], square_width, color=(1, 1, 1, 0.3), point_width=0)
 
 
 def draw_snap_axis(self, context):
