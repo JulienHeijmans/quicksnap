@@ -7,7 +7,7 @@ bl_info = {
     "name": "QuickSnap",
     "author": "Julien Heijmans",
     "blender": (2, 93, 0),
-    'version': (1, 4, 5),
+    'version': (1, 4, 6),
     "category": "3D View",
     "description": "Quickly snap objects/vertices/curve points",
     "warning": "",
