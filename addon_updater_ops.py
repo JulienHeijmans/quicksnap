@@ -43,7 +43,8 @@ except Exception as e:
     class SingletonUpdaterNone(object):
         """Fake, bare minimum fields and functions for the updater object."""
 
-        def __init__(self):
+        def __init__(self, *args, **kwargs):
+            super(SingletonUpdaterNone, self).__init__(*args, **kwargs)
             self.invalid_updater = True  # Used to distinguish bad install.
 
             self.addon = None

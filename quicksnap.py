@@ -370,7 +370,8 @@ class QuickVertexSnapOperator(bpy.types.Operator):
             self.target2d = quicksnap_utils.transform_worldspace_coord2d(self.target, region,
                                                                          context.space_data.region_3d)
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.icons = None
         self.icon_display_time = 0
         self.view_distance = None
