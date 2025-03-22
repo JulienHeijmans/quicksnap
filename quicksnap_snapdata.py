@@ -28,7 +28,6 @@ class ObjectPointData:
     def __init__(self, obj, object_id, perspective_matrix, width, height, width_half, height_half, view_location,
                  check_select=False,
                  filter_selected=True, snap_type='POINTS'):
-        super().__init__()
         """Initialize the ObjectPointData, calculates WorldSpace/ScreenSpace coordinates from local space coordinates
 
         Args:
@@ -216,7 +215,6 @@ class SnapData:
 
     def __init__(self, context, region, settings, selected_meshes, scene_meshes=None, is_origin=False,
                  no_selection=False):
-        super().__init__()
         self.no_selection = no_selection
         self.settings = settings
         self.is_origin_snapdata = is_origin

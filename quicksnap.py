@@ -371,7 +371,6 @@ class QuickVertexSnapOperator(bpy.types.Operator):
                                                                          context.space_data.region_3d)
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
         self.icons = None
         self.icon_display_time = 0
         self.view_distance = None
