@@ -382,8 +382,86 @@ mouse_pointer_offsets = [
     Vector((0, -40))
 ]
 
+def is_child_of_collection_instance(obj):
+    while obj:
+        if obj.parent and obj.parent.instance_collection:
+            return True, obj.parent
+        obj = obj.parent
+    return False, None
 
-def check_close_objects(context, region, depsgraph, mouse_position):
+def gather_scene_instance_map():
+    """
+    Recursively parse all objects in the scene and find every collection-instanced object.
+    Returns a dictionary where:
+        - Keys: The source object name (original object in the collection).
+        - Values: A dictionary where:
+            - Keys: World matrix.
+            - Values: The topmost collection instance root (Empty in the scene).
+    """
+    instances_dict = {}
+
+    # Iterate through all objects in the scene
+    for instance_obj in bpy.context.scene.objects:
+        if instance_obj.instance_collection:  # Check if it's a Collection Instance (Empty)
+            instance_matrix = instance_obj.matrix_world.copy().freeze()  # Root instance matrix
+            nested_dict = gather_instance_map_recursive(instance_obj, instance_matrix, instance_obj)
+
+            # Merge results from this instance into the main dictionary
+            for key, value in nested_dict.items():
+                if key not in instances_dict:
+                    instances_dict[key] = {}
+                instances_dict[key].update(value)
+
+    return instances_dict
+
+def gather_instance_map_recursive(instance_obj, parent_matrix, top_root):
+    """
+    Recursively finds all objects inside a collection instance.
+    Returns a dictionary where:
+        - Keys: Source object names.
+        - Values: A dictionary where:
+            - Keys: World matrix.
+            - Values: The topmost collection instance root (Empty in the scene).
+    """
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    instances_dict = {}
+
+    eval_instance = instance_obj.evaluated_get(depsgraph)
+
+    for obj in eval_instance.instance_collection.objects:
+        original_obj = obj.original
+
+        if not original_obj:
+            continue
+
+        world_matrix = (parent_matrix @ obj.matrix_local).freeze()
+
+        if original_obj.name not in instances_dict:
+            instances_dict[original_obj.name] = {}
+
+        instances_dict[original_obj.name][world_matrix] = top_root
+
+        if obj.instance_collection:
+            nested_dict = gather_instance_map_recursive(obj, world_matrix, top_root)
+            
+            for key, value in nested_dict.items():
+                if key not in instances_dict:
+                    instances_dict[key] = {}
+                instances_dict[key].update(value)
+
+    return instances_dict
+
+def find_instance(instances_dict, object_name, target_matrix, epsilon=1e-6):
+    if object_name not in instances_dict:
+        return None
+
+    search_matrix=target_matrix.copy().freeze()
+    if search_matrix in instances_dict[object_name]:
+        return instances_dict[object_name][search_matrix]
+
+    return None  # No match found
+
+def check_close_objects(context, region, depsgraph, mouse_position, instances_map):
     """
     Cast 8 rays around the mouse, returns the hit objects.
     """
@@ -404,8 +482,12 @@ def check_close_objects(context, region, depsgraph, mouse_position):
         (hit, _, _, _, obj, *_) = context.scene.ray_cast(depsgraph, origin=view_position,
                                                          direction=mouse_vector)
         if hit:
-            hit_objects.append(obj)
-    # logger.info(f"hit_objects: {hit_objects}")
+            if obj.name in instances_map:
+                instanceRoot = find_instance(instances_map, obj.name, obj.matrix_world)
+                if instanceRoot:
+                    hit_objects.append(instanceRoot)
+            else:
+                hit_objects.append(obj)
     return hit_objects
 
 

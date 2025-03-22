@@ -6,6 +6,7 @@ import mathutils
 from mathutils import Vector
 from bpy_extras import view3d_utils
 from . import quicksnap_utils
+from pprint import pprint
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
 logger = logging.getLogger(__name_addon__)
@@ -27,7 +28,7 @@ class ObjectPointData:
 
     def __init__(self, obj, object_id, perspective_matrix, width, height, width_half, height_half, view_location,
                  check_select=False,
-                 filter_selected=True, snap_type='POINTS'):
+                 filter_selected=True, snap_type='POINTS', matrix_local=None):
         """Initialize the ObjectPointData, calculates WorldSpace/ScreenSpace coordinates from local space coordinates
 
         Args:
@@ -40,8 +41,10 @@ class ObjectPointData:
             filter_selected: If true includes only selected points, if false include only un-selected points
         """
         self.completed = False
-        # logger.debug(f"ObjectPointData {obj.name}- check_select={check_select} - filter_selected={filter_selected}")
+        logger.debug(f"ObjectPointData {obj.name}- check_select={check_select} - filter_selected={filter_selected}")
         matrix_world = obj.matrix_world
+        if matrix_local!=None:
+            matrix_world =  matrix_world @ matrix_local
         self.is_curve = obj.type == 'CURVE' and snap_type == 'POINTS'
         # Gather object space points coordinates from the mesh/curves data
         if obj.type == 'MESH':
@@ -248,7 +251,10 @@ class SnapData:
         self.objects_point_data = {}
         self.origins_map = {}
         self.snap_origins = quicksnap_utils.get_addon_settings().snap_objects_origin
-
+        
+        # Track all instances
+        self.instances_map=quicksnap_utils.gather_scene_instance_map()
+        pprint(self.instances_map)
         # Initialize kdtrees-target points nparray with correct size
         max_vertex_count = self.get_max_vertex_count(context, selected_meshes, scene_meshes)
         self.kd = mathutils.kdtree.KDTree(max_vertex_count)
@@ -291,10 +297,14 @@ class SnapData:
                         if obj.name not in self.processed:
                             self.processed.add(obj.name)
                         continue
+                    
                     if object_name not in selected_meshes and (
                             obj.type == 'CURVE' or (
                             obj.type == 'MESH' and len(obj.data.vertices) > 0 and len(obj.data.polygons) == 0)):
                         self.add_object_data(object_name, depsgraph=depsgraph)
+                    elif obj.type == 'EMPTY' and obj.instance_type == 'COLLECTION':
+                        self.add_object_data(object_name, depsgraph=depsgraph)
+                        
 
             # Add all objects for the snap origin (selected objects only).
             elif self.is_origin_snapdata:
@@ -310,24 +320,35 @@ class SnapData:
             self.process_iteration(context)
             self.keep_processing=False
 
-    def add_object_data(self, object_name, is_selected=False, depsgraph=None, set_first_priority=False):
+    def add_object_data(self, object_name, is_selected=False, depsgraph=None, set_first_priority=False, parent_name=None, matrix_local=None,root_name=None):
         """
         Creates ObjectPointData for the object.
         Adds object to the "To Process" list.
         If object is already in the list, eventually set to first in the priority list, for objects under the mouse.
         """
-        if object_name in self.processed:  # Skip already processed objects.
+
+        logger.debug(f"add_object_data {object_name} - parent_name: {parent_name} - root_name: {root_name}")
+        if root_name == None:
+            root_name = object_name
+        if parent_name!=None:
+            full_object_name = parent_name + ">" + object_name
+        else:
+            full_object_name = object_name
+        
+        if full_object_name in self.processed:  # Skip already processed objects.
             return
-        if not (bpy.data.objects[object_name].type == 'MESH' or bpy.data.objects[object_name].type == 'CURVE'):
-            self.processed.add(object_name)
+        if not (bpy.data.objects[object_name].type == 'MESH' or bpy.data.objects[object_name].type == 'CURVE' or (bpy.data.objects[object_name].type == 'EMPTY' and bpy.data.objects[object_name].instance_type == 'COLLECTION')):
+            logger.debug(f"add_object_data {object_name} - skipped type: {bpy.data.objects[object_name].type}")
+            self.processed.add(full_object_name)
             return
+        logger.debug(f"add_object_data {full_object_name} - adding")
         if is_selected:  # Process selected objects first.
             # Prioritize object if is in the list but not first in list.
-            if object_name in self.to_process_selected:
-                if self.to_process_selected.index(object_name) > 0:
+            if full_object_name in self.to_process_selected:
+                if self.to_process_selected.index(full_object_name) > 0:
                     # logger.debug(f"add_object_data:{object_name} - PRIORITIZE SELECTED")
-                    self.to_process_selected.remove(object_name)
-                    self.to_process_selected.insert(0, object_name)
+                    self.to_process_selected.remove(full_object_name)
+                    self.to_process_selected.insert(0, full_object_name)
 
             # Add object in the list if it is not already
             else:
@@ -338,43 +359,66 @@ class SnapData:
                     obj = bpy.data.objects[object_name].evaluated_get(depsgraph)
                 else:
                     obj = bpy.data.objects[object_name]
-                self.objects_point_data[object_name] = ObjectPointData(obj,
-                                                                       self.scene_meshes.index(object_name),
-                                                                       self.perspective_matrix,
-                                                                       width=self.width,
-                                                                       height=self.height,
-                                                                       width_half=self.width_half,
-                                                                       height_half=self.height_half,
-                                                                       view_location=self.view_location,
-                                                                       check_select=not self.object_mode and not self.no_selection,
-                                                                       filter_selected=self.is_origin_snapdata,
-                                                                       snap_type=self.snap_type)
-
-                self.to_process_selected.insert(0, object_name)
+                if not (obj.type == 'EMPTY' and obj.instance_type == 'COLLECTION'):
+                    object_id=self.scene_meshes.index(root_name)
+                    self.objects_point_data[full_object_name] = ObjectPointData(obj,
+                                                                        object_id,
+                                                                        self.perspective_matrix,
+                                                                        width=self.width,
+                                                                        height=self.height,
+                                                                        width_half=self.width_half,
+                                                                        height_half=self.height_half,
+                                                                        view_location=self.view_location,
+                                                                        check_select=not self.object_mode and not self.no_selection,
+                                                                        filter_selected=self.is_origin_snapdata,
+                                                                        snap_type=self.snap_type,
+                                                                        matrix_local=matrix_local)
+                    self.to_process_selected.insert(0, full_object_name)
+                else:
+                    instanced_collection = obj.instance_collection
+                    if parent_name!=None:
+                        object_name=parent_name + ">" + object_name
+                    else:
+                        object_name=object_name
+                    if matrix_local!=None:
+                        matrix_local=matrix_local @ obj.matrix_local
+                    else:
+                        matrix_local=obj.matrix_local
+                    # Loop through all objects in the instanced collection
+                    logger.debug(f"Addmesh:{object_name} -  Is a collection instance")
+                    for instanced_obj in instanced_collection.objects:
+                        logger.debug(f"Addmesh:{object_name} -  Add collection instance object: {instanced_obj.name} - Type: {instanced_obj.type}")
+                        self.add_object_data(instanced_obj.name, is_selected=is_selected, depsgraph=depsgraph, set_first_priority=set_first_priority, parent_name=full_object_name, matrix_local=matrix_local,root_name=root_name)
+                logger.debug(f"to_process_selected:{full_object_name}")
                 if self.is_origin_snapdata:
                     quicksnap_utils.revert_mode(current_mode)
                     self.selected_ids[object_name] = []
         else:
             # Prioritize object if is in the list but not first in list.
-            if object_name in self.to_process_scene:
-                if self.to_process_scene.index(object_name) > 0 and set_first_priority:
+            if full_object_name in self.to_process_scene:
+                if self.to_process_scene.index(full_object_name) > 0 and set_first_priority:
                     # logger.debug(f"Addmesh:{object_name} - PRIORITIZE SCENE")
-                    self.to_process_scene.remove(object_name)
-                    self.to_process_scene.insert(0, object_name)
+                    self.to_process_scene.remove(full_object_name)
+                    self.to_process_scene.insert(0, full_object_name)
 
             # Add object in the list if it is not already
             else:
-                # logger.debug(f"Addmesh:{object_name} -  FIRST ADD Scene")
+                logger.debug(f"Addmesh:{object_name} -  FIRST ADD Scene")
                 if self.settings.ignore_modifiers:
                     obj = bpy.data.objects[object_name]
                 else:
                     obj = bpy.data.objects[object_name].evaluated_get(depsgraph)
 
-                if object_name not in self.scene_meshes:
+                if root_name!=None:
+                    object_index=self.scene_meshes.index(root_name)
+                elif root_name not in self.scene_meshes:
                     object_index = -1
                 else:
-                    object_index = self.scene_meshes.index(object_name)
-                self.objects_point_data[object_name] = ObjectPointData(obj,
+                    object_index = self.scene_meshes.index(root_name)
+                
+                if not (obj.type == 'EMPTY' and obj.instance_type == 'COLLECTION'):
+                    
+                    self.objects_point_data[full_object_name] = ObjectPointData(obj,
                                                                        object_index,
                                                                        self.perspective_matrix,
                                                                        width=self.width,
@@ -382,9 +426,26 @@ class SnapData:
                                                                        width_half=self.width_half,
                                                                        height_half=self.height_half,
                                                                        view_location=self.view_location,
-                                                                       snap_type=self.snap_type)
+                                                                       snap_type=self.snap_type,
+                                                                       matrix_local=matrix_local)
+                    self.to_process_scene.append(full_object_name)
+                else:
+                    instanced_collection = obj.instance_collection
+                    if parent_name!=None:
+                        object_name=parent_name + ">" + object_name
+                    else:
+                        object_name=object_name
+                    if matrix_local!=None:
+                        matrix_local=matrix_local @ obj.matrix_local
+                    else:
+                        matrix_local=obj.matrix_local
+                    # Loop through all objects in the instanced collection
+                    logger.debug(f"Addmesh:{object_name} -  Is a collection instance")
+                    for instanced_obj in instanced_collection.objects:
+                        logger.debug(f"Addmesh:{object_name} -  Add collection instance object: {instanced_obj.name} - Type: {instanced_obj.type}")
+                        self.add_object_data(instanced_obj.name, is_selected=is_selected, depsgraph=depsgraph, set_first_priority=set_first_priority, parent_name=full_object_name, matrix_local=matrix_local,root_name=root_name)
+                
                 # logger.debug(f"Adding to target verts data scene:{object_name}")
-                self.to_process_scene.append(object_name)
 
     def add_scene_roots(self, context, selected_meshes, scene_meshes=None):
         """
@@ -491,6 +552,7 @@ class SnapData:
         Inject {batch_size} points from object's objects_point_data into the SnapData points.
         Updates snapdata completed status
         """
+        logger.debug(f"process_points_data_batch - {object_name}")
         points_data = self.objects_point_data[object_name]
         # Get start/end indices of points we want to insert.
         start_index = points_data.processed_point_count
@@ -578,7 +640,6 @@ class SnapData:
             for selected_object in self.meshes_selection:
                 bpy.data.objects[selected_object].hide_set(True)
             for object_name in self.to_process_scene.copy():
-                obj = bpy.data.objects[object_name]
                 if object_name not in self.objects_point_data:
                     continue
                 logger.debug(
@@ -666,6 +727,31 @@ class SnapData:
                                   closest[0][1] in self.origins_map, close_points[0][4])
         return closest_point_data
 
+    def get_max_vertex_count_obj(self, obj_name, depsgraph,use_object_mode=False,ignore_modifiers=False):
+        max_vertex_count=0
+        obj = bpy.data.objects[obj_name]
+        if obj.type == 'MESH':
+            if use_object_mode and self.object_mode or ignore_modifiers and self.settings.ignore_modifiers:
+                data = obj.evaluated_get(depsgraph).data
+            else:
+                data = obj.data
+
+            if self.snap_type == 'POINTS':
+                max_vertex_count += len(data.vertices)
+            elif self.snap_type == 'MIDPOINTS':
+                max_vertex_count += len(data.edges)
+            elif self.snap_type == 'FACES':
+                max_vertex_count += len(data.polygons)
+
+        elif obj.type == 'CURVE':
+            max_vertex_count += sum(
+                [(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])
+        elif obj.type == 'EMPTY' and obj.instance_type == 'COLLECTION':
+            instanced_collection = obj.instance_collection
+            for instanced_obj in instanced_collection.objects:
+                max_vertex_count += self.get_max_vertex_count_obj(instanced_obj.name, depsgraph,use_object_mode,ignore_modifiers)
+        return max_vertex_count
+
     def get_max_vertex_count(self, context, selected_objects, scene_objects):
         """
         Returns the maximum count of visible verts/points/origins in the scene
@@ -675,23 +761,7 @@ class SnapData:
             max_vertex_count = len(selected_objects)
             if self.snap_type != 'ORIGINS':
                 for obj_name in selected_objects:
-                    obj = bpy.data.objects[obj_name]
-                    if obj.type == 'MESH':
-                        if self.object_mode:
-                            data = obj.evaluated_get(depsgraph).data
-                        else:
-                            data = obj.data
-
-                        if self.snap_type == 'POINTS':
-                            max_vertex_count += len(data.vertices)
-                        elif self.snap_type == 'MIDPOINTS':
-                            max_vertex_count += len(data.edges)
-                        elif self.snap_type == 'FACES':
-                            max_vertex_count += len(data.polygons)
-
-                    elif obj.type == 'CURVE':
-                        max_vertex_count += sum(
-                            [(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])
+                    max_vertex_count+=self.get_max_vertex_count_obj(obj_name,depsgraph=depsgraph,use_object_mode=True)
         else:
             all_meshes = scene_objects.copy()
             all_meshes.extend(selected_objects)
@@ -700,35 +770,9 @@ class SnapData:
             if self.snap_type != 'ORIGINS':
                 depsgraph = context.evaluated_depsgraph_get()
                 for obj_name in all_meshes:
-                    obj = bpy.data.objects[obj_name]
-                    if obj.type == 'MESH':
-                        if self.settings.ignore_modifiers:
-                            data = obj.data
-                        else:
-                            data = obj.evaluated_get(depsgraph).data
-
-                        if self.snap_type == 'POINTS':
-                            max_vertex_count += len(data.vertices)
-                        elif self.snap_type == 'MIDPOINTS':
-                            max_vertex_count += len(data.edges)
-                        elif self.snap_type == 'FACES':
-                            max_vertex_count += len(data.polygons)
-
-                    elif obj.type == 'CURVE':
-                        max_vertex_count += sum(
-                            [(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])
+                    max_vertex_count+=self.get_max_vertex_count_obj(obj_name,depsgraph=depsgraph,ignore_modifiers=True)
                 for obj_name in selected_objects:
-                    obj = bpy.data.objects[obj_name]
-                    if obj.type == 'MESH':
-                        if self.snap_type == 'POINTS':
-                            max_vertex_count += len(obj.data.vertices)
-                        elif self.snap_type == 'MIDPOINTS':
-                            max_vertex_count += len(obj.data.edges)
-                        elif self.snap_type == 'FACES':
-                            max_vertex_count += len(obj.data.polygons)
-                    elif obj.type == 'CURVE':
-                        max_vertex_count += sum(
-                            [(len(spline.points) + len(spline.bezier_points)) for spline in obj.data.splines])
+                    max_vertex_count+=self.get_max_vertex_count_obj(obj_name,depsgraph=depsgraph)
 
         logger.info(f"Max vertex count: {max_vertex_count} - is_origin_snapdata={self.is_origin_snapdata}")
         return max_vertex_count
@@ -742,7 +786,7 @@ class SnapData:
 
 
         # Look for close objects (8 raycasts 40px around the mouse cursor)
-        close_objects = quicksnap_utils.check_close_objects(context, region, depsgraph, mouse_position)
+        close_objects = quicksnap_utils.check_close_objects(context, region, depsgraph, mouse_position,self.instances_map)
         for obj in self.processed:  # un-hiding processed objects, for obstruction check
             if obj not in bpy.data.objects:
                 continue
