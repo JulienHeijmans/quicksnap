@@ -55,8 +55,8 @@ class SingletonUpdater:
     needed throughout the addon. It implements all the interfaces for running
     updates.
     """
-    def __init__(self):
-
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs  )
         self._engine = GithubEngine()
         self._user = None
         self._repo = None
@@ -1635,7 +1635,8 @@ class SingletonUpdater:
 class BitbucketEngine:
     """Integration to Bitbucket API for git-formatted repositories"""
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.api_url = 'https://api.bitbucket.org'
         self.token = None
         self.name = "bitbucket"
@@ -1669,7 +1670,8 @@ class BitbucketEngine:
 class GithubEngine:
     """Integration to Github API"""
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.api_url = 'https://api.github.com'
         self.token = None
         self.name = "github"
@@ -1699,7 +1701,8 @@ class GithubEngine:
 class GitlabEngine:
     """Integration to GitLab API"""
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.api_url = 'https://gitlab.com'
         self.token = None
         self.name = "gitlab"
