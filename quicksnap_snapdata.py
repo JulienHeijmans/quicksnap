@@ -27,7 +27,7 @@ class ObjectPointData:
 
     def __init__(self, obj, object_id, perspective_matrix, width, height, width_half, height_half, view_location,
                  check_select=False,
-                 filter_selected=True, snap_type='POINTS'):
+                 filter_selected=True, snap_type='POINTS', *args, **kwargs):
         """Initialize the ObjectPointData, calculates WorldSpace/ScreenSpace coordinates from local space coordinates
 
         Args:
@@ -39,6 +39,7 @@ class ObjectPointData:
             check_select: If true filter points base on point selection
             filter_selected: If true includes only selected points, if false include only un-selected points
         """
+        super().__init__(*args, **kwargs)
         self.completed = False
         # logger.debug(f"ObjectPointData {obj.name}- check_select={check_select} - filter_selected={filter_selected}")
         matrix_world = obj.matrix_world
@@ -214,7 +215,8 @@ class SnapData:
     """
 
     def __init__(self, context, region, settings, selected_meshes, scene_meshes=None, is_origin=False,
-                 no_selection=False):
+                 no_selection=False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.no_selection = no_selection
         self.settings = settings
         self.is_origin_snapdata = is_origin

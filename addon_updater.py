@@ -56,6 +56,7 @@ class SingletonUpdater:
     updates.
     """
     def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._engine = GithubEngine()
         self._user = None
         self._repo = None
@@ -1635,6 +1636,7 @@ class BitbucketEngine:
     """Integration to Bitbucket API for git-formatted repositories"""
 
     def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.api_url = 'https://api.bitbucket.org'
         self.token = None
         self.name = "bitbucket"
@@ -1669,6 +1671,7 @@ class GithubEngine:
     """Integration to Github API"""
 
     def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.api_url = 'https://api.github.com'
         self.token = None
         self.name = "github"
@@ -1699,6 +1702,7 @@ class GitlabEngine:
     """Integration to GitLab API"""
 
     def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.api_url = 'https://gitlab.com'
         self.token = None
         self.name = "gitlab"

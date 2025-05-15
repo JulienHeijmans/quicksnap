@@ -44,6 +44,7 @@ except Exception as e:
         """Fake, bare minimum fields and functions for the updater object."""
 
         def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
             self.invalid_updater = True  # Used to distinguish bad install.
 
             self.addon = None
