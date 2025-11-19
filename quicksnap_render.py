@@ -1,6 +1,5 @@
 ﻿from pathlib import Path
 
-import bgl
 import bpy
 import bpy_extras
 import gpu
@@ -14,9 +13,9 @@ from mathutils import Vector
 from .quicksnap_utils import State
 from .quicksnap_utils import dump
 if bpy.app.version >= (3, 4, 0):
-    from .quicksnap_shader_gpu_module import shader_2d_image_color, shader_2d_uniform_color, shader_3d_uniform_color, shader_3d_smooth_color, shader_3d_polyline_smooth_color
+    from .quicksnap_shader_gpu_module import shader_2d_image_color, shader_2d_uniform_color, shader_3d_uniform_color, shader_3d_smooth_color, shader_3d_polyline_smooth_color, draw_line_3d_smooth_blend_versionized, draw_polygon_smooth_blend_versionized
 else:
-    from .quicksnap_shader_legacy import shader_2d_image_color, shader_2d_uniform_color, shader_3d_uniform_color, shader_3d_smooth_color, shader_3d_polyline_smooth_color
+    from .quicksnap_shader_legacy import shader_2d_image_color, shader_2d_uniform_color, shader_3d_uniform_color, shader_3d_smooth_color, shader_3d_polyline_smooth_color, draw_line_3d_smooth_blend_versionized, draw_polygon_smooth_blend_versionized
 
 __name_addon__ = '.'.join(__name__.split('.')[:-1])
 logger = logging.getLogger(__name_addon__)
@@ -149,76 +148,13 @@ def draw_line_3d_smooth_blend(source, target, color_a=(1, 0, 0, 1), color_b=(0, 
     """
         Draw a smooth blend line in the viewport.
     """
-    if bpy.app.version >= (3, 4, 0):
-        gpu.state.blend_set("ALPHA")
-        if depth_test:
-            gpu.state.depth_test_set("LESS")
-        vertices = (
-            (source[0], source[1], source[2]),
-            (target[0], target[1], target[2]))
-        color_fade = (color_a, color_b)
-
-        batch = batch_for_shader(shader_3d_polyline_smooth_color, 'LINES', {"pos": vertices, "color": color_fade})
-        shader_3d_polyline_smooth_color.uniform_float("lineWidth", line_width)
-        shader_3d_polyline_smooth_color.bind()
-        batch.draw(shader_3d_polyline_smooth_color)
-
-        gpu.state.blend_set("NONE")
-        if depth_test:
-            gpu.state.depth_test_set("NONE")
-    else:
-        if line_width != 1:
-            bgl.glLineWidth(line_width)
-        bgl.glEnable(bgl.GL_BLEND)
-        bgl.glEnable(bgl.GL_LINE_SMOOTH)
-        if depth_test:
-            bgl.glEnable(bgl.GL_DEPTH_TEST)
-        vertices = (
-            (source[0], source[1], source[2]),
-            (target[0], target[1], target[2]))
-        color_fade = (color_a, color_b)
-
-        batch = batch_for_shader(shader_3d_smooth_color, 'LINES', {"pos": vertices, "color": color_fade})
-        shader_3d_smooth_color.bind()
-        batch.draw(shader_3d_smooth_color)
-        if line_width != 1:
-            bgl.glLineWidth(1)
-        bgl.glDisable(bgl.GL_BLEND)
-        bgl.glDisable(bgl.GL_LINE_SMOOTH)
-        if depth_test:
-            bgl.glDisable(bgl.GL_DEPTH_TEST)
-
+    draw_line_3d_smooth_blend_versionized(source, target, color_a, color_b, line_width,depth_test)       
 
 def draw_polygon_smooth_blend(points, indices, color, depth_test):
     """
         Draw a smooth blend polygon in the viewport.
     """
-    if bpy.app.version >= (3, 4, 0):
-        gpu.state.blend_set("ALPHA")
-        if depth_test:
-            gpu.state.depth_test_set("LESS")
-        colors = [color] * len(points)
-        batch = batch_for_shader(shader_3d_smooth_color, 'TRIS', {"pos": points, "color": colors}, indices=indices)
-        shader_3d_smooth_color.bind()
-        batch.draw(shader_3d_smooth_color)
-
-        gpu.state.blend_set("NONE")
-        if depth_test:
-            gpu.state.depth_test_set("NONE")
-    else:
-        bgl.glEnable(bgl.GL_BLEND)
-        bgl.glEnable(bgl.GL_LINE_SMOOTH)
-        if depth_test:
-            bgl.glEnable(bgl.GL_DEPTH_TEST)
-        colors = [color] * len(points)
-        batch = batch_for_shader(shader_3d_smooth_color, 'TRIS', {"pos": points, "color": colors}, indices=indices)
-        shader_3d_smooth_color.bind()
-        batch.draw(shader_3d_smooth_color)
-
-        bgl.glDisable(bgl.GL_BLEND)
-        bgl.glDisable(bgl.GL_LINE_SMOOTH)
-        if depth_test:
-            bgl.glDisable(bgl.GL_DEPTH_TEST)
+    draw_polygon_smooth_blend_versionized(points, indices, color, depth_test)
 
 
 def draw_points_3d(coords, color=(1, 1, 0, 1), point_width=3, depth_test=False):
